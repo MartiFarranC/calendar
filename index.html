@@ -1,10 +1,25 @@
+<!doctype html>
+<html lang="ca">
+<head>
 <meta charset="utf-8">
-<title>Calendari fase 1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calendari</title>
+<meta name="description" content="Calendari personal minimalista: dies, tasques, esdeveniments i festius de Catalunya.">
+<meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F0F10" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@500;800&family=Space+Mono:wght@400;700&display=swap">
+<script>
+  // Apply the saved theme before the first paint, and the floating-window mode.
+  try { const t = JSON.parse(localStorage.getItem("calendari.settings") || "{}").theme; if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+  if (location.hash === "#flotant") document.documentElement.classList.add("compact");
+</script>
 <style>
-  /* Layout: three rows at 1/8, 1/2 and 3/8 of the screen; the last splits 2/3 month and 1/3 tasks. Mirrors MainScreen.kt. */
+  /* Layout: three rows at 1/8, 1/2 and 3/8 of the screen; the last splits 2/3 month and 1/3 day agenda. Mirrors MainScreen.kt. */
   :root {
     --bg: #F7F5F0; --fg: #1A1A1A; --muted: #8C8A85; --detail: #D9D6CF; --accent: #E5463A; --on-accent: #FFFFFF;
     --dot: "Doto", ui-monospace, monospace;
@@ -16,9 +31,10 @@
     --bg: #0F0F10; --fg: #F2F0EB; --muted: #76767A; --detail: #2A2A2D; --accent: #FF5C4F; --on-accent: #0F0F10; color-scheme: dark }
 
   html, body { height: 100%; }
-  body { background: var(--bg); color: var(--fg); font-family: var(--mono); }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--mono); -webkit-tap-highlight-color: transparent; }
   .screen { height: 100%; min-height: 640px; display: grid; grid-template-rows: 1fr 4fr 3fr;
-    padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); padding-block: 8px;
+    padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+    padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
     max-width: 1100px; margin: 0 auto; box-sizing: border-box; }
 
   /* Row 1: header */
@@ -27,7 +43,7 @@
   .eyebrow { color: var(--accent); font-size: 11px; letter-spacing: 2px; }
   .longdate { font-weight: 700; font-size: 15px; }
   .settings { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--detail); background: none; cursor: pointer;
-    display: grid; place-items: center; padding: 0; }
+    display: grid; place-items: center; padding: 0; flex: none; }
   .settings svg { width: 18px; height: 18px; }
 
   /* Row 2: day + ring */
@@ -73,60 +89,112 @@
   .number { font-family: var(--dot); font-weight: 800; line-height: .9; font-size: clamp(72px, 15vh, 180px); font-variant-numeric: tabular-nums; }
   .left { color: var(--accent); font-size: 12px; }
 
-  /* Row 3: month + tasks */
+  .ring-text { cursor: default; }
+  .next { color: var(--fg); font-size: 12px; max-width: 28ch; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .next b { color: var(--accent); font-weight: 700; }
+
+  /* Row 3: month + day agenda */
   .bottom { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; padding-top: 12px; min-height: 0; }
   .label { color: var(--muted); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
   .label.strong { color: var(--fg); font-weight: 700; }
   .month { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .month-head { display: flex; align-items: center; gap: 6px; }
+  .month-head .label { flex: 1; }
+  .nav { font: inherit; font-size: 11px; letter-spacing: 1px; color: var(--fg); background: none; border: 1px solid var(--detail);
+    border-radius: 999px; min-width: 30px; height: 30px; padding: 0 10px; cursor: pointer; }
+  .nav[hidden] { display: none; }
   .grid { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr; min-height: 0; }
   .initials { display: grid; grid-template-columns: repeat(7, 1fr); margin: 8px 0 4px; text-align: center; }
   .initials span { font-size: 10px; }
-  .cell { display: grid; place-items: center; min-height: 0; }
-  .cell span { font-family: var(--dot); font-weight: 800; font-size: 16px; height: 90%; max-height: 40px; max-width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; }
+  .cell { all: unset; box-sizing: border-box; display: grid; place-items: center; min-height: 0; cursor: pointer; }
+  .cell.blank { cursor: default; }
+  .cell span { position: relative; font-family: var(--dot); font-weight: 800; font-size: 16px; height: 90%; max-height: 40px; max-width: 100%; aspect-ratio: 1;
+    display: grid; place-items: center; border-radius: 50%; transition: box-shadow .15s; }
+  .cell:hover span { box-shadow: inset 0 0 0 1px var(--detail); }
   .cell.past span { color: var(--muted); }
-  .cell.weekend span { color: var(--accent); }
+  .cell.weekend span, .cell.holiday span { color: var(--accent); }
+  .cell.past.holiday span, .cell.past.weekend span { color: color-mix(in srgb, var(--accent) 55%, var(--muted)); }
+  .cell.sel span { box-shadow: inset 0 0 0 1.5px var(--fg); }
   .cell.today span { background: var(--accent); color: var(--on-accent); }
+  .cell.has span::after { content: ""; position: absolute; left: 50%; bottom: 8%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
+  .cell.has.alldone span::after { background: var(--muted); }
+  .cell.today.has span::after { background: var(--on-accent); }
 
   .tasks { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-  .tasks-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
-  .tasks ul { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: grid; align-content: start; gap: 10px; }
-  .tasks li button { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: center; font-size: 13px; overflow-wrap: anywhere; }
-  .tick { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; display: grid; place-items: center; transition: border-color .2s; }
+  .tasks-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .dayname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .holiday-name { color: var(--accent); font-size: 11px; min-height: 1.4em; margin: 2px 0 6px; }
+  .tasks ul { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: grid; align-content: start; gap: 8px; }
+  .tasks li { display: flex; align-items: flex-start; gap: 2px; }
+  .tasks li .main { all: unset; flex: 1; min-width: 0; cursor: pointer; display: flex; gap: 8px; align-items: baseline; font-size: 13px; overflow-wrap: anywhere; padding: 2px 0; }
+  .tasks li.empty { color: var(--muted); font-size: 12px; }
+  .tick { flex: none; align-self: center; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; display: grid; place-items: center; transition: border-color .2s; }
   .tick::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform .2s; }
+  .time { color: var(--accent); font-weight: 700; flex: none; }
+  .from { color: var(--muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; flex: none; }
   .done .tick { border-color: var(--accent); }
   .done .tick::after { transform: scale(1); }
-  .done .text { color: var(--muted); text-decoration: line-through; }
-  .add { display: flex; gap: 4px; align-items: center; padding-top: 8px; font-size: 13px; }
+  .done .text, .done .time { color: var(--muted); text-decoration: line-through; }
+  .act { all: unset; flex: none; width: 26px; height: 22px; display: grid; place-items: center; color: var(--muted); cursor: pointer; font-size: 13px; border-radius: 6px; opacity: 0; transition: opacity .15s; }
+  .act:hover { color: var(--accent); }
+  .tasks li:hover .act, .act:focus-visible { opacity: 1; }
+  @media (hover: none) { .act { opacity: .7; } }
+  .add { display: flex; gap: 6px; align-items: center; padding-top: 8px; font-size: 13px; border-top: 1px solid var(--detail); margin-top: 8px; }
   .add span { color: var(--accent); }
-  .add input { all: unset; flex: 1; min-width: 0; font: inherit; color: var(--fg); caret-color: var(--accent); }
+  .add input { all: unset; flex: 1; min-width: 0; font: inherit; color: var(--fg); caret-color: var(--accent); padding: 4px 0; }
   .add input::placeholder { color: var(--muted); }
-  button:focus-visible, input:focus-visible, .tasks li button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .add .cancel { all: unset; color: var(--muted); cursor: pointer; font-size: 11px; }
+  .add .cancel[hidden] { display: none; }
+  button:focus-visible, input:focus-visible, select:focus-visible, .tasks li .main:focus-visible, .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* Simulator controls, outside the app itself */
+  /* Settings */
+  dialog { background: var(--bg); color: var(--fg); border: 1px solid var(--detail); border-radius: 18px; padding: 20px; width: min(380px, calc(100vw - 32px)); box-sizing: border-box; font-family: var(--mono); }
+  dialog::backdrop { background: rgb(0 0 0 / .45); }
+  dialog h2 { margin: 0 0 16px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
+  dialog section { display: grid; gap: 8px; padding: 12px 0; border-top: 1px solid var(--detail); font-size: 13px; }
+  dialog .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  dialog input[type=time], dialog select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--detail); border-radius: 8px; padding: 4px 8px; }
+  dialog input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .pill { font: inherit; font-size: 11px; letter-spacing: 1px; color: var(--fg); background: none; border: 1px solid var(--detail); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  .pill.danger { color: var(--accent); }
+  .hint { color: var(--muted); font-size: 11px; }
+  .keys { color: var(--muted); font-size: 11px; line-height: 1.7; margin: 0; }
+  kbd { font: inherit; color: var(--fg); border: 1px solid var(--detail); border-radius: 4px; padding: 0 4px; }
+
+  /* Hour simulator, a developer tool shown only when enabled in the settings */
   .sim { position: fixed; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     display: flex; gap: 10px; align-items: center; font-size: 11px; color: var(--muted);
     background: var(--bg); border: 1px solid var(--detail); border-radius: 999px; padding: 6px 12px; }
+  .sim[hidden] { display: none; }
   .sim input { accent-color: var(--accent); width: 120px; }
   .sim button { font: inherit; color: var(--fg); background: none; border: 1px solid var(--detail); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
   .toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg);
-    font-size: 12px; padding: 8px 14px; border-radius: 999px; }
-  @media (max-width: 520px) { .longdate { font-size: 13px; } .cell span { font-size: 13px; } .tasks li button, .add { font-size: 12px; }
-    .bottom { gap: 14px; } .screen { height: auto; min-height: 100%; }
+    font-size: 12px; padding: 8px 14px; border-radius: 999px; z-index: 10; }
+  .toast[hidden] { display: none; }
+
+  @media (max-width: 700px) {
+    .screen { height: auto; min-height: 100%; grid-template-rows: auto minmax(300px, 46vh) auto; }
+    .bottom { grid-template-columns: 1fr; gap: 18px; }
+    .grid { min-height: 260px; }
+    .tasks ul { overflow: visible; }
+    .tasks { padding-bottom: 24px; }
+  }
+  @media (max-width: 520px) { .longdate { font-size: 13px; } .cell span { font-size: 14px; } .tasks li .main, .add { font-size: 14px; }
     .sim { position: static; margin: 4px auto 16px; width: fit-content; } .sim input { width: 90px; } }
   /* Opened as a small floating window (#flotant): only the clock. */
   html.compact body { margin: 0; }
   html.compact .screen { grid-template-rows: 1fr; height: 100% !important; min-height: 0 !important; padding: 8px 12px; }
   html.compact header, html.compact .bottom, html.compact .pager-dots, html.compact .sim, html.compact #page-dia, html.compact #floatBtn { display: none !important; }
 </style>
-<script>if (location.hash === "#flotant") document.documentElement.classList.add("compact");</script>
-
+</head>
+<body>
 <div class="screen">
   <header>
     <div class="head-text">
       <div class="eyebrow">● AVUI</div>
-      <div class="longdate" id="longdate">dimarts, 27 d'octubre de 2026</div>
+      <div class="longdate" id="longdate">dijous, 26 de novembre de 2026</div>
     </div>
-    <button class="settings" id="settings" type="button" aria-label="Configuració">
+    <button class="settings" id="settings" type="button" aria-label="Configuració" title="Configuració">
       <svg viewBox="0 0 18 18" aria-hidden="true">
         <g fill="var(--fg)"><circle cx="2" cy="2" r="1.6"/><circle cx="9" cy="2" r="1.6"/><circle cx="16" cy="2" r="1.6"/>
         <circle cx="2" cy="9" r="1.6"/><circle cx="16" cy="9" r="1.6"/>
@@ -142,9 +210,10 @@
         <div class="ring">
           <canvas id="ring" aria-hidden="true"></canvas>
           <div class="ring-text">
-            <div class="weekday" id="weekday">dimarts</div>
-            <div class="number" id="number">27</div>
+            <div class="weekday" id="weekday">dijous</div>
+            <div class="number" id="number">26</div>
             <div class="left" id="left">queden 9 h 0 min</div>
+            <div class="next" id="next" hidden></div>
           </div>
         </div>
       </div>
@@ -176,43 +245,136 @@
 
   <section class="bottom">
     <div class="month">
-      <div class="label strong" id="monthLabel">octubre 2026</div>
+      <div class="month-head">
+        <div class="label strong" id="monthLabel" aria-live="polite">novembre 2026</div>
+        <button class="nav" type="button" id="todayBtn" title="Torna a avui (T)">AVUI</button>
+        <button class="nav" type="button" id="prevMonth" aria-label="Mes anterior" title="Mes anterior">‹</button>
+        <button class="nav" type="button" id="nextMonth" aria-label="Mes següent" title="Mes següent">›</button>
+      </div>
       <div class="initials label"><span>dl</span><span>dt</span><span>dc</span><span>dj</span><span>dv</span><span>ds</span><span>dg</span></div>
-      <div class="grid" id="grid"></div>
+      <div class="grid" id="grid" role="grid" aria-label="Dies del mes"></div>
     </div>
     <div class="tasks">
-      <div class="tasks-head"><span class="label strong">Tasques</span><span class="label" id="count">1/4</span></div>
-      <ul id="todos"></ul>
-      <form class="add" id="addForm"><span>+</span><input id="newTodo" placeholder="afegeix" autocomplete="off" aria-label="Nova tasca"></form>
+      <div class="tasks-head"><span class="label strong dayname" id="dayName">avui</span><span class="label" id="count">0/0</span></div>
+      <div class="holiday-name" id="holidayName"></div>
+      <ul id="todos" aria-live="polite"></ul>
+      <form class="add" id="addForm">
+        <span id="addMark">+</span>
+        <input id="newTodo" placeholder="afegeix · 16:30 metge" autocomplete="off" enterkeyhint="done" aria-label="Nova tasca o esdeveniment. Comença amb una hora, com 16:30, per fer-ne un esdeveniment.">
+        <button type="button" class="cancel" id="cancelEdit" hidden>cancel·la</button>
+      </form>
     </div>
   </section>
 </div>
 
-<div class="sim">
+<dialog id="settingsDlg" aria-labelledby="settingsTitle">
+  <form method="dialog">
+    <h2 id="settingsTitle">Configuració <button class="pill" value="close" aria-label="Tanca">✕</button></h2>
+  </form>
+  <section>
+    <div>Hores despert <span class="hint">· l'anell del dia</span></div>
+    <div class="row">de <input type="time" id="setStart" step="900"> a <input type="time" id="setEnd" step="900"></div>
+  </section>
+  <section>
+    <label class="row">Tema
+      <select id="setTheme"><option value="auto">Automàtic</option><option value="light">Clar</option><option value="dark">Fosc</option></select>
+    </label>
+    <label class="row"><input type="checkbox" id="setSim"> Mostra el simulador d'hora</label>
+  </section>
+  <section>
+    <div>Còpia de seguretat <span class="hint">· les dades només es guarden en aquest navegador</span></div>
+    <div class="row">
+      <button class="pill" type="button" id="exportBtn">EXPORTA</button>
+      <button class="pill" type="button" id="importBtn">IMPORTA</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <button class="pill danger" type="button" id="clearDoneBtn">ESBORRA LES FETES</button>
+    </div>
+  </section>
+  <section>
+    <p class="keys"><kbd>←</kbd> <kbd>→</kbd> dia · <kbd>↑</kbd> <kbd>↓</kbd> setmana · <kbd>PgUp</kbd> <kbd>PgDn</kbd> mes<br>
+      <kbd>T</kbd> avui · <kbd>N</kbd> nova tasca · <kbd>Esc</kbd> cancel·la<br>
+      Escriu <kbd>16:30 metge</kbd> per posar-hi hora.</p>
+  </section>
+</dialog>
+
+<div class="sim" id="sim" hidden>
   <label for="simTime">Simula l'hora</label>
-  <input type="range" id="simTime" min="300" max="1439" step="5">
+  <input type="range" id="simTime" min="0" max="1439" step="5">
   <span id="simLabel">—</span>
   <button type="button" id="nowBtn">Ara</button>
 </div>
-<div class="toast" id="toast" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
 
 <script>
   const WEEKDAYS = ["diumenge","dilluns","dimarts","dimecres","dijous","divendres","dissabte"];
+  const WD_SHORT = ["dg","dl","dt","dc","dj","dv","ds"];
   const MONTHS = ["gener","febrer","març","abril","maig","juny","juliol","agost","setembre","octubre","novembre","desembre"];
-  const START = 7 * 60, END = 23 * 60, RING_DOTS = 48;
+  const RING_DOTS = 48;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let simulated = null, shown = reduceMotion ? null : 0, target = 0;
-
-  // Same rules as AwakeHours, catalanLongDate and monthWeeks in shared/.
-  const elapsedFraction = m => Math.min(1, Math.max(0, (m - START) / (END - START)));
-  const minutesLeft = m => Math.max(0, END - Math.max(m, START));
-  const formatRemaining = min => { const h = Math.floor(min / 60), r = min % 60; return h > 0 ? `${h} h ${r} min` : `${r} min`; };
-  const hhmm = m => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
-  const longDate = d => { const mo = MONTHS[d.getMonth()]; return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${"aeiou".includes(mo[0]) ? "d'" : "de "}${mo} de ${d.getFullYear()}`; };
-
   const $ = id => document.getElementById(id);
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const pad = n => String(n).padStart(2, "0");
 
+  // ---- Storage ---------------------------------------------------------------
+  const load = (k, fallback) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; } };
+  const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false };
+  let settings = { ...DEFAULTS, ...load("calendari.settings", {}) };
+  const saveSettings = () => store("calendari.settings", settings);
+
+  // ---- Dates -----------------------------------------------------------------
+  const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const fromKey = k => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const dayDiff = (a, b) => Math.round((fromKey(keyOf(b)) - fromKey(keyOf(a))) / 864e5);
+  const ofMonth = mo => ("aeiou".includes(mo[0]) ? "d'" : "de ") + mo;
+  const longDate = d => `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${ofMonth(MONTHS[d.getMonth()])} de ${d.getFullYear()}`;
+  const hhmm = m => `${Math.floor(m / 60)}:${pad(m % 60)}`;
+  const toMin = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  const fromMin = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  const formatRemaining = min => { const h = Math.floor(min / 60), r = min % 60; return h > 0 ? `${h} h ${r} min` : `${r} min`; };
+
+  // Public holidays in Catalonia: the fixed ones plus Good Friday and Easter Monday.
+  const FIXED_HOLIDAYS = { "01-01": "Cap d'Any", "01-06": "Reis", "05-01": "Festa del Treball", "06-24": "Sant Joan", "08-15": "L'Assumpció",
+    "09-11": "Diada Nacional de Catalunya", "10-12": "Festa Nacional d'Espanya", "11-01": "Tots Sants", "12-06": "Dia de la Constitució",
+    "12-08": "La Immaculada", "12-25": "Nadal", "12-26": "Sant Esteve" };
+  function easter(y) { // Anonymous Gregorian algorithm
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(y, month - 1, day);
+  }
+  const holidayCache = {};
+  function holiday(d) {
+    const y = d.getFullYear();
+    if (!holidayCache[y]) { const e = easter(y); holidayCache[y] = { [keyOf(addDays(e, -2))]: "Divendres Sant", [keyOf(addDays(e, 1))]: "Dilluns de Pasqua" }; }
+    return holidayCache[y][keyOf(d)] || FIXED_HOLIDAYS[`${pad(d.getMonth() + 1)}-${pad(d.getDate())}`] || "";
+  }
+
+  // ---- Items: tasks (no time) and events (with a time), each on a date ----------
+  // { id, date: "YYYY-MM-DD", time: "HH:MM" | "", text, done }
+  let items = load("calendari.items", null);
+  if (!Array.isArray(items)) {
+    // First run, or the old format: undated "todos" become today's tasks.
+    const old = load("todos", []);
+    const today = keyOf(new Date());
+    items = (Array.isArray(old) ? old : []).map((t, i) => ({ id: i + 1, date: today, time: "", text: String(t.text || ""), done: !!t.done })).filter(t => t.text);
+    store("calendari.items", items);
+  }
+  const saveItems = () => store("calendari.items", items);
+  const nextId = () => Math.max(0, ...items.map(t => t.id)) + 1;
+  const byTime = (a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || a.time.localeCompare(b.time) || a.id - b.id;
+  const itemsOn = k => items.filter(t => t.date === k).sort(byTime);
+
+  // ---- State -------------------------------------------------------------------
+  let selected = keyOf(new Date()), view = new Date(), followToday = true;
+  let simulated = null, shown = reduceMotion ? null : 0, target = 0, editingId = null;
+  view = new Date(view.getFullYear(), view.getMonth(), 1);
+  const nowMinutes = () => { const d = new Date(); return simulated ?? d.getHours() * 60 + d.getMinutes(); };
+  const elapsedFraction = m => Math.min(1, Math.max(0, (m - settings.start) / Math.max(1, settings.end - settings.start)));
+  const minutesLeft = m => Math.max(0, settings.end - Math.max(m, settings.start));
+
+  // ---- Ring --------------------------------------------------------------------
   function drawRing(value) {
     const c = $("ring"), dpr = devicePixelRatio || 1, size = c.clientWidth;
     if (!size) return;
@@ -228,7 +390,6 @@
       if (amount > 0) { ctx.globalAlpha = amount; ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(x, y, dotR, 0, 2 * Math.PI); ctx.fill(); }
     }
   }
-
   function animate() {
     if (shown === null) { drawRing(target); return; }
     shown += (target - shown) * 0.08;
@@ -237,74 +398,225 @@
     if (shown !== target) requestAnimationFrame(animate);
   }
 
-  function renderGrid(d) {
-    const year = d.getFullYear(), month = d.getMonth(), today = d.getDate();
+  // ---- Month grid --------------------------------------------------------------
+  function renderGrid() {
+    const year = view.getFullYear(), month = view.getMonth(), todayKey = keyOf(new Date());
     const leading = (new Date(year, month, 1).getDay() + 6) % 7;
     const count = new Date(year, month + 1, 0).getDate();
-    const cells = [];
-    for (let i = 0; i < leading; i++) cells.push("<div class=\"cell\"></div>");
+    const grid = $("grid"); grid.innerHTML = "";
+    for (let i = 0; i < leading; i++) grid.append(Object.assign(document.createElement("div"), { className: "cell blank" }));
     for (let day = 1; day <= count; day++) {
-      const col = (leading + day - 1) % 7;
-      const cls = day === today ? "today" : day < today ? "past" : col >= 5 ? "weekend" : "";
-      cells.push(`<div class="cell ${cls}"><span>${day}</span></div>`);
+      const d = new Date(year, month, day), k = keyOf(d), col = (leading + day - 1) % 7, list = itemsOn(k), hol = holiday(d);
+      const b = document.createElement("button"); b.type = "button"; b.dataset.key = k;
+      b.className = ["cell", k === todayKey && "today", k < todayKey && "past", col >= 5 && "weekend", hol && "holiday", k === selected && "sel",
+        list.length && "has", list.length && list.every(t => t.done) && "alldone"].filter(Boolean).join(" ");
+      b.tabIndex = k === selected ? 0 : -1;
+      const pending = list.filter(t => !t.done).length;
+      b.setAttribute("aria-label", `${longDate(d)}${hol ? `, ${hol}` : ""}${list.length ? `, ${pending} pendents de ${list.length}` : ""}`);
+      if (k === selected) b.setAttribute("aria-current", "date");
+      if (hol) b.title = hol;
+      b.innerHTML = `<span>${day}</span>`;
+      grid.append(b);
     }
-    while (cells.length % 7) cells.push("<div class=\"cell\"></div>");
-    $("grid").innerHTML = cells.join("");
+    while (grid.children.length % 7) grid.append(Object.assign(document.createElement("div"), { className: "cell blank" }));
+    const thisMonth = new Date(); thisMonth.setDate(1);
     $("monthLabel").textContent = `${MONTHS[month]} ${year}`;
+    $("todayBtn").hidden = selected === todayKey && year === thisMonth.getFullYear() && month === thisMonth.getMonth();
   }
 
-  function render() {
-    const d = new Date();
-    const minutes = simulated ?? d.getHours() * 60 + d.getMinutes();
+  // ---- Day agenda --------------------------------------------------------------
+  function dayTitle(k) {
+    const n = dayDiff(new Date(), fromKey(k)), d = fromKey(k);
+    const rel = n === 0 ? "avui" : n === 1 ? "demà" : n === -1 ? "ahir" : "";
+    const base = `${WEEKDAYS[d.getDay()]} ${d.getDate()}${d.getFullYear() === new Date().getFullYear() ? "" : `/${d.getMonth() + 1}/${d.getFullYear()}`}`;
+    return rel ? `${rel} · ${base}` : base;
+  }
+  function renderTodos() {
+    const ul = $("todos"), todayKey = keyOf(new Date()); ul.innerHTML = "";
+    let list = itemsOn(selected);
+    // Unfinished tasks from earlier days carry over to today.
+    const carried = selected === todayKey ? items.filter(t => t.date < todayKey && !t.done).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b)) : [];
+    for (const t of [...carried, ...list]) {
+      const li = document.createElement("li"); if (t.done) li.className = "done";
+      const b = document.createElement("button"); b.type = "button"; b.className = "main"; b.setAttribute("role", "checkbox"); b.setAttribute("aria-checked", t.done);
+      const tick = document.createElement("span"); tick.className = "tick";
+      b.append(tick);
+      if (t.time) b.append(Object.assign(document.createElement("span"), { className: "time", textContent: t.time }));
+      b.append(Object.assign(document.createElement("span"), { className: "text", textContent: t.text }));
+      if (t.date !== selected) {
+        const d = fromKey(t.date), n = dayDiff(d, new Date());
+        b.append(Object.assign(document.createElement("span"), { className: "from", textContent: n === 1 ? "ahir" : `${WD_SHORT[d.getDay()]} ${d.getDate()}`, title: "Pendent d'un dia anterior" }));
+      }
+      b.addEventListener("click", () => { t.done = !t.done; saveItems(); renderAll(); });
+      const edit = Object.assign(document.createElement("button"), { type: "button", className: "act", textContent: "✎", title: "Edita" });
+      edit.setAttribute("aria-label", `Edita «${t.text}»`);
+      edit.addEventListener("click", () => startEdit(t));
+      const del = Object.assign(document.createElement("button"), { type: "button", className: "act", textContent: "✕", title: "Esborra" });
+      del.setAttribute("aria-label", `Esborra «${t.text}»`);
+      del.addEventListener("click", () => {
+        const idx = items.indexOf(t); items.splice(idx, 1); saveItems(); renderAll();
+        toast(`Esborrat «${t.text}»`, "Desfés", () => { items.splice(idx, 0, t); saveItems(); renderAll(); });
+      });
+      li.append(b, edit, del); ul.append(li);
+    }
+    if (!ul.children.length) ul.append(Object.assign(document.createElement("li"), { className: "empty", textContent: "Res per a aquest dia." }));
+    $("count").textContent = list.length ? `${list.filter(t => t.done).length}/${list.length}` : "";
+    $("dayName").textContent = dayTitle(selected);
+    $("holidayName").textContent = holiday(fromKey(selected));
+  }
+
+  // "16:30 metge", "9h metge", "9.15 metge" → an event at that time; anything else → a task.
+  function parseEntry(raw) {
+    const m = raw.match(/^(\d{1,2})(?:[:.h](\d{2})?)h?\s+(.+)$/i);
+    if (m && +m[1] < 24 && +(m[2] || 0) < 60) return { time: `${pad(+m[1])}:${m[2] || "00"}`, text: m[3].trim() };
+    return { time: "", text: raw };
+  }
+  function startEdit(t) {
+    editingId = t.id;
+    $("newTodo").value = (t.time ? t.time + " " : "") + t.text;
+    $("addMark").textContent = "✎"; $("cancelEdit").hidden = false;
+    $("newTodo").focus();
+  }
+  function stopEdit() { editingId = null; $("newTodo").value = ""; $("addMark").textContent = "+"; $("cancelEdit").hidden = true; }
+  $("addForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const raw = $("newTodo").value.trim();
+    if (editingId !== null) {
+      const t = items.find(x => x.id === editingId);
+      if (t && raw) Object.assign(t, parseEntry(raw));
+      stopEdit(); saveItems(); renderAll(); return;
+    }
+    if (!raw) return;
+    items.push({ id: nextId(), date: selected, ...parseEntry(raw), done: false });
+    $("newTodo").value = ""; saveItems(); renderAll();
+  });
+  $("cancelEdit").addEventListener("click", stopEdit);
+  $("newTodo").addEventListener("keydown", e => { if (e.key === "Escape") { stopEdit(); e.target.blur(); } });
+
+  // ---- Today panel -------------------------------------------------------------
+  function renderToday() {
+    const d = new Date(), minutes = nowMinutes();
     $("longdate").textContent = longDate(d);
     $("weekday").textContent = WEEKDAYS[d.getDay()];
     $("number").textContent = d.getDate();
-    $("left").textContent = `queden ${formatRemaining(minutesLeft(minutes))}`;
+    $("left").textContent = minutes >= settings.end ? "a dormir" : `queden ${formatRemaining(minutesLeft(minutes))}`;
+    const next = itemsOn(keyOf(d)).find(t => t.time && !t.done && toMin(t.time) >= minutes);
+    const el = $("next"); el.hidden = !next;
+    if (next) {
+      const inMin = toMin(next.time) - minutes;
+      el.innerHTML = ""; el.append(Object.assign(document.createElement("b"), { textContent: next.time }), ` ${next.text}`);
+      el.title = inMin < 60 ? `d'aquí a ${inMin} min` : `d'aquí a ${formatRemaining(inMin)}`;
+    }
     $("simTime").value = minutes; $("simLabel").textContent = hhmm(minutes);
-    renderGrid(d);
     target = 1 - elapsedFraction(minutes);
     animate();
   }
 
-  // Tasks: example items, kept in this browser only.
-  const SAMPLE = [{ id: 1, text: "Comprar pa", done: false }, { id: 2, text: "Trucar a l'àvia", done: true },
-                  { id: 3, text: "Revisar el PR del calendari", done: false }, { id: 4, text: "Sortir a córrer", done: false }];
-  let todos;
-  try { todos = JSON.parse(localStorage.getItem("todos")) || SAMPLE; } catch { todos = SAMPLE; }
-  const save = () => { try { localStorage.setItem("todos", JSON.stringify(todos)); } catch {} };
-  function renderTodos() {
-    const ul = $("todos"); ul.innerHTML = "";
-    for (const t of todos) {
-      const li = document.createElement("li"); if (t.done) li.className = "done";
-      const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "checkbox"); b.setAttribute("aria-checked", t.done);
-      const tick = document.createElement("span"); tick.className = "tick";
-      const text = document.createElement("span"); text.className = "text"; text.textContent = t.text;
-      b.append(tick, text);
-      b.addEventListener("click", () => { t.done = !t.done; save(); renderTodos(); });
-      li.append(b); ul.append(li);
-    }
-    $("count").textContent = `${todos.filter(t => t.done).length}/${todos.length}`;
+  function renderAll() {
+    const todayKey = keyOf(new Date());
+    if (followToday && selected !== todayKey) select(todayKey, false);
+    renderToday(); renderGrid(); renderTodos();
   }
-  $("addForm").addEventListener("submit", e => {
-    e.preventDefault();
-    const text = $("newTodo").value.trim(); if (!text) return;
-    todos.push({ id: Math.max(0, ...todos.map(t => t.id)) + 1, text, done: false });
-    $("newTodo").value = ""; save(); renderTodos();
+
+  function select(k, focus = true) {
+    selected = k; followToday = k === keyOf(new Date());
+    const d = fromKey(k); view = new Date(d.getFullYear(), d.getMonth(), 1);
+    if (editingId !== null) stopEdit();
+    renderGrid(); renderTodos();
+    if (focus) document.querySelector(`.cell[data-key="${k}"]`)?.focus();
+  }
+  const moveSelection = n => select(keyOf(addDays(fromKey(selected), n)));
+  function moveMonth(n) {
+    const d = fromKey(selected), target = new Date(d.getFullYear(), d.getMonth() + n, 1);
+    const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    select(keyOf(new Date(target.getFullYear(), target.getMonth(), Math.min(d.getDate(), last))), false);
+  }
+  $("grid").addEventListener("click", e => { const c = e.target.closest(".cell[data-key]"); if (c) select(c.dataset.key); });
+  $("prevMonth").addEventListener("click", () => moveMonth(-1));
+  $("nextMonth").addEventListener("click", () => moveMonth(1));
+  $("todayBtn").addEventListener("click", () => select(keyOf(new Date()), false));
+  document.querySelector(".ring-text").addEventListener("click", () => select(keyOf(new Date()), false));
+
+  // Swipe the month grid left or right to change month.
+  let touchX = null;
+  $("grid").addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, { passive: true });
+  $("grid").addEventListener("touchend", e => {
+    if (touchX === null) return; const dx = e.changedTouches[0].clientX - touchX; touchX = null;
+    if (Math.abs(dx) > 50) moveMonth(dx < 0 ? 1 : -1);
   });
 
-  let toastTimer;
-  $("settings").addEventListener("click", () => {
-    const t = $("toast"); t.textContent = "La configuració arriba a la fase 4"; t.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 2200);
+  document.addEventListener("keydown", e => {
+    if (e.target.closest("input, select, textarea, dialog") || e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key, moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    if (k in moves && !e.target.closest(".pages, .pager-dots")) { e.preventDefault(); moveSelection(moves[k]); }
+    else if (k === "PageUp" || k === "PageDown") { e.preventDefault(); moveMonth(k === "PageUp" ? -1 : 1); }
+    else if (k === "t" || k === "T") select(keyOf(new Date()));
+    else if (k === "n" || k === "N") { e.preventDefault(); $("newTodo").focus(); }
   });
-  $("simTime").addEventListener("input", e => { simulated = Number(e.target.value); render(); });
-  $("nowBtn").addEventListener("click", () => { simulated = null; render(); });
+
+  // ---- Toast with an optional action -------------------------------------------
+  let toastTimer;
+  function toast(text, actionLabel, action) {
+    const t = $("toast"); t.innerHTML = ""; t.append(text);
+    if (actionLabel) {
+      const b = Object.assign(document.createElement("button"), { type: "button", textContent: actionLabel });
+      Object.assign(b.style, { font: "inherit", color: "var(--accent)", background: "none", border: 0, marginLeft: "10px", cursor: "pointer", fontWeight: 700 });
+      b.addEventListener("click", () => { t.hidden = true; action(); });
+      t.append(b);
+    }
+    t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, actionLabel ? 5000 : 2200);
+  }
+
+  // ---- Settings ----------------------------------------------------------------
+  const dlg = $("settingsDlg");
+  function applyTheme() {
+    if (settings.theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = settings.theme;
+  }
+  function applySim() { $("sim").hidden = !settings.sim; if (!settings.sim) simulated = null; }
+  $("settings").addEventListener("click", () => {
+    $("setStart").value = fromMin(settings.start); $("setEnd").value = fromMin(settings.end);
+    $("setTheme").value = settings.theme; $("setSim").checked = settings.sim;
+    dlg.showModal();
+  });
+  dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+  $("setStart").addEventListener("change", e => { if (e.target.value && toMin(e.target.value) < settings.end) { settings.start = toMin(e.target.value); saveSettings(); renderToday(); } else e.target.value = fromMin(settings.start); });
+  $("setEnd").addEventListener("change", e => { if (e.target.value && toMin(e.target.value) > settings.start) { settings.end = toMin(e.target.value); saveSettings(); renderToday(); } else e.target.value = fromMin(settings.end); });
+  $("setTheme").addEventListener("change", e => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
+  $("setSim").addEventListener("change", e => { settings.sim = e.target.checked; saveSettings(); applySim(); renderToday(); });
+  $("exportBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ app: "calendari", version: 1, exported: new Date().toISOString(), settings, items }, null, 2)], { type: "application/json" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `calendari-${keyOf(new Date())}.json` });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      const list = Array.isArray(data) ? data : data.items;
+      if (!Array.isArray(list)) throw new Error("format");
+      const clean = list.filter(t => t && typeof t.text === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.date))
+        .map((t, i) => ({ id: i + 1, date: t.date, time: /^\d{2}:\d{2}$/.test(t.time || "") ? t.time : "", text: t.text, done: !!t.done }));
+      if (!confirm(`Substituir les ${items.length} entrades actuals per les ${clean.length} de la còpia?`)) return;
+      items = clean; saveItems();
+      if (data.settings) { settings = { ...DEFAULTS, ...data.settings }; saveSettings(); applyTheme(); applySim(); }
+      dlg.close(); renderAll(); toast(`Importades ${clean.length} entrades`);
+    } catch { toast("Aquest fitxer no és una còpia del calendari"); }
+  });
+  $("clearDoneBtn").addEventListener("click", () => {
+    const n = items.filter(t => t.done).length; if (!n) { toast("No hi ha res fet per esborrar"); return; }
+    const before = items; items = items.filter(t => !t.done); saveItems(); renderAll(); dlg.close();
+    toast(`Esborrades ${n} fetes`, "Desfés", () => { items = before; saveItems(); renderAll(); });
+  });
+
+  $("simTime").addEventListener("input", e => { simulated = Number(e.target.value); renderToday(); });
+  $("nowBtn").addEventListener("click", () => { simulated = null; renderToday(); });
   addEventListener("resize", () => drawRing(shown ?? target));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => drawRing(shown ?? target));
   new MutationObserver(() => drawRing(shown ?? target)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  addEventListener("storage", e => { if (e.key === "calendari.items") { items = load("calendari.items", items); renderAll(); } });
 
   // Page 2: real time, read every frame like ClockSection does.
-  const pad = n => String(n).padStart(2, "0");
   // Bar styles, ported from ClockBar.kt: "along" runs bottom-to-top (vertical) or left-to-right, "across" is the thickness.
   const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"]];
   let styleIndex = 0, vertical = true;
@@ -456,8 +768,17 @@
     tabs.forEach((b, i) => b.setAttribute("aria-selected", i === current));
   });
 
-  renderTodos();
-  render();
+  applyTheme(); applySim();
+  renderAll();
   document.fonts?.ready.then(() => drawRing(shown ?? target));
-  setInterval(() => { if (simulated === null) render(); }, 15000);
+  // Every 15 s refresh the ring; redraw the month and agenda only when the day changes.
+  let lastDay = keyOf(new Date());
+  const refresh = () => { const k = keyOf(new Date()); if (k !== lastDay) { lastDay = k; renderAll(); } else if (simulated === null) renderToday(); };
+  setInterval(refresh, 15000);
+  addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+  // Works offline and can be installed as an app (only when served over http/https, e.g. GitHub Pages).
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http") && !location.hash.includes("flotant")) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
+</body>
+</html>
