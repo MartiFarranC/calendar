@@ -79,6 +79,18 @@
   .hrow .digits { font-size: 24px; }
   .hrow .bar { width: 100%; height: 56px; }
   .pills { position: absolute; top: 8px; right: 0; display: flex; gap: 8px; z-index: 1; }
+  .alt { position: absolute; inset: 44px 0 4px; display: grid; grid-template-rows: 1fr auto; justify-items: center; gap: 4px; }
+  .alt .stage { position: relative; width: 100%; height: 100%; min-height: 0; }
+  .alt canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .alt .alt-read { font-size: 12px; text-align: center; }
+  .quarts { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 14px; text-align: center; }
+  .qphrase { font-family: var(--dot); font-weight: 800; font-size: clamp(24px, min(9cqw, 13cqh), 64px); line-height: 1.05; text-wrap: balance; max-width: 14ch; }
+  .qphrase em { font-style: normal; color: var(--accent); }
+  .qpart { color: var(--muted); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; }
+  .qdots { display: flex; gap: 6px; align-items: center; }
+  .qdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--detail); }
+  .qdots i.q { width: 10px; height: 10px; }
+  .qdots i.on { background: var(--accent); }
   .floatnote { color: var(--muted); font-size: 12px; text-align: center; padding: 16px; }
   .pills button { font: inherit; font-size: 11px; letter-spacing: 1px; color: var(--fg); background: var(--bg);
     border: 1px solid var(--detail); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
@@ -219,6 +231,7 @@
       </div>
       <div class="page clockpage" id="page-rellotge">
         <div class="pills">
+          <button type="button" id="clockBtn" aria-label="Canvia de rellotge">BARRES ▸</button>
           <button type="button" id="styleBtn" aria-label="Estil de les barres">REGLE</button>
           <button type="button" id="dirBtn" aria-label="Direcció de les barres">↕</button>
           <button type="button" id="floatBtn" aria-label="Obre el rellotge en una finestra flotant">⧉ FLOTANT</button>
@@ -234,6 +247,11 @@
             <div class="hrow"><div class="meta"><div class="digits mDigits">00</div><div class="label">Min</div><div class="remaining minLeft"></div></div><canvas class="bar" data-bar="m"></canvas></div>
             <div class="hrow"><div class="meta"><div class="digits hDigits">00</div><div class="label">Hora</div><div class="remaining hourLeft"></div></div><canvas class="bar" data-bar="h"></canvas></div>
           </div>
+        </div>
+        <div class="alt" hidden>
+          <div class="stage"><canvas aria-hidden="true"></canvas>
+            <div class="quarts" hidden><div class="qpart"></div><div class="qphrase"></div><div class="qdots"></div></div></div>
+          <div class="alt-read remaining"></div>
         </div>
       </div>
     </div>
@@ -318,7 +336,7 @@
   // ---- Storage ---------------------------------------------------------------
   const load = (k, fallback) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; } };
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false };
+  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false, clock: "bars" };
   let settings = { ...DEFAULTS, ...load("calendari.settings", {}) };
   const saveSettings = () => store("calendari.settings", settings);
 
@@ -703,13 +721,14 @@
 
   const styleBtn = $("styleBtn"), dirBtn = $("dirBtn");
   styleBtn.addEventListener("click", () => { styleIndex = (styleIndex + 1) % STYLES.length; styleBtn.textContent = STYLES[styleIndex][1]; });
-  dirBtn.addEventListener("click", () => { vertical = !vertical; dirBtn.textContent = vertical ? "↕" : "↔"; clock.querySelector("#vClock").hidden = !vertical; clock.querySelector("#hClock").hidden = vertical; });
+  dirBtn.addEventListener("click", () => { vertical = !vertical; dirBtn.textContent = vertical ? "↕" : "↔"; applyClock(); });
   // The clock page can move into an always-on-top Picture-in-Picture window, so look things up from it, not the document.
   const clock = $("page-rellotge"), all = sel => clock.querySelectorAll(sel);
   let clockWin = window, loop = 0;
   function tick(id) {
     if (id !== loop) return;
-    const d = new Date(), ms = d.getMilliseconds() / 1000;
+    const d = new Date(), ms = d.getMilliseconds() / 1000, kind = CLOCKS[clockIndex][0];
+    if (kind !== "bars") { drawAlt(kind, d); clockWin.requestAnimationFrame(() => tick(id)); return; }
     all(".secFill").forEach(e => e.style.setProperty("--f", ms));
     const root = clock.querySelector(vertical ? "#vClock" : "#hClock");
     root.querySelectorAll("[data-bar]").forEach(c => {
@@ -724,6 +743,185 @@
     clockWin.requestAnimationFrame(() => tick(id));
   }
   const restart = () => tick(++loop);
+  // ---- More clocks: alternative faces for the clock page ----------------------
+  const CLOCKS = [["bars", "BARRES"], ["quarts", "QUARTS"], ["esfera", "ESFERA"], ["matriu", "MATRIU"], ["sol", "SOL"], ["sorra", "SORRA"], ["linia", "LÍNIA"]];
+  let clockIndex = Math.max(0, CLOCKS.findIndex(c => c[0] === settings.clock));
+  const altBox = () => clock.querySelector(".alt");
+  function applyClock() {
+    const kind = CLOCKS[clockIndex][0], bars = kind === "bars";
+    $("clockBtn").textContent = `${CLOCKS[clockIndex][1]} ▸`;
+    styleBtn.hidden = dirBtn.hidden = !bars;
+    clock.querySelector("#vClock").hidden = !bars || !vertical;
+    clock.querySelector("#hClock").hidden = !bars || vertical;
+    altBox().hidden = bars;
+    altBox().querySelector(".quarts").hidden = kind !== "quarts";
+    altBox().querySelector("canvas").hidden = kind === "quarts";
+    lastQ = "";
+  }
+  $("clockBtn").addEventListener("click", () => { clockIndex = (clockIndex + 1) % CLOCKS.length; settings.clock = CLOCKS[clockIndex][0]; saveSettings(); applyClock(); });
+
+  function prepCanvas(c) {
+    const dpr = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+    if (!W || !H) return null;
+    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+    const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    return { ctx, W, H };
+  }
+  function dotAt(ctx, x, y, r, color, alpha = 1) { ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, Math.max(.5, r), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  function say(ctx, s, x, y, color, size = 10, align = "center", weight = 400) {
+    ctx.fillStyle = color; ctx.font = `${weight} ${size}px 'Space Mono', ui-monospace, monospace`; ctx.textAlign = align; ctx.textBaseline = "middle"; ctx.fillText(s, x, y);
+  }
+  const hm = min => `${Math.floor(min / 60) % 24}:${pad(Math.floor(min % 60))}`;
+
+  // Quarts: the time told the Catalan way, rounded to five minutes.
+  const NAMES = [, "una", "dues", "tres", "quatre", "cinc", "sis", "set", "vuit", "nou", "deu", "onze", "dotze"];
+  function quarts(h, m) {
+    let m5 = Math.round(m / 5) * 5; if (m5 === 60) { h++; m5 = 0; }
+    const cur = h % 12 || 12, nxt = (h + 1) % 12 || 12;
+    const art = n => n === 1 ? "la una" : `les ${NAMES[n]}`, verb = n => n === 1 ? "és" : "són";
+    const de = n => (n === 1 || n === 11) ? `d'${NAMES[n]}` : `de ${NAMES[n]}`;
+    const per = n => n === 1 ? "per a la una" : `per a les ${NAMES[n]}`;
+    const phrase = {
+      0: `${verb(cur)} ${art(cur)} <em>en punt</em>`, 5: `${verb(cur)} ${art(cur)} i cinc`,
+      10: `falten cinc per <em>un quart</em> ${de(nxt)}`, 15: `és <em>un quart</em> ${de(nxt)}`, 20: `és <em>un quart</em> i cinc ${de(nxt)}`,
+      25: `falten cinc per <em>dos quarts</em> ${de(nxt)}`, 30: `són <em>dos quarts</em> ${de(nxt)}`, 35: `són <em>dos quarts</em> i cinc ${de(nxt)}`,
+      40: `falten cinc per <em>tres quarts</em> ${de(nxt)}`, 45: `són <em>tres quarts</em> ${de(nxt)}`, 50: `són <em>tres quarts</em> i cinc ${de(nxt)}`,
+      55: `falten cinc ${per(nxt)}`,
+    }[m5];
+    const hh = m5 >= 10 ? (h + 1) % 24 : h % 24;
+    const part = hh < 6 ? "de la matinada" : hh < 13 ? "del matí" : hh < 20 ? "de la tarda" : hh < 23 ? "del vespre" : "de la nit";
+    return { phrase, part };
+  }
+  let lastQ = "";
+  function drawQuarts(box, d) {
+    const q = quarts(d.getHours(), d.getMinutes()), key = q.phrase + q.part;
+    const dots = box.querySelector(".qdots");
+    if (!dots.children.length) for (let i = 1; i <= 12; i++) { const el = document.createElement("i"); if (i % 3 === 0) el.className = "q"; dots.append(el); }
+    if (key !== lastQ) { lastQ = key; box.querySelector(".qphrase").innerHTML = q.phrase; box.querySelector(".qpart").textContent = q.part; }
+    const steps = Math.floor(d.getMinutes() / 5);
+    [...dots.children].forEach((el, i) => el.classList.toggle("on", i < steps));
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function drawEsfera({ ctx, W, H }, d, c) {
+    const cx = W / 2, cy = H / 2, R = Math.min(W, H) * .44, s = d.getSeconds() + d.getMilliseconds() / 1000;
+    const m = d.getMinutes() + s / 60, h = (d.getHours() % 12) + m / 60;
+    for (let i = 0; i < 60; i++) {
+      const a = -Math.PI / 2 + i / 60 * Math.PI * 2, big = i % 5 === 0, lit = i <= Math.floor(s);
+      dotAt(ctx, cx + R * Math.cos(a), cy + R * Math.sin(a), big ? R * .028 : R * .016, lit ? c.accent : (big ? c.muted : c.detail), i === Math.floor(s) ? .35 + .65 * (s % 1) : 1);
+    }
+    const hand = (frac, len, n, r) => { const a = -Math.PI / 2 + frac * Math.PI * 2; for (let i = 1; i <= n; i++) { const k = i / n * len; dotAt(ctx, cx + k * Math.cos(a), cy + k * Math.sin(a), r, c.fg); } };
+    hand(h / 12, R * .5, 6, R * .035); hand(m / 60, R * .78, 11, R * .026);
+    dotAt(ctx, cx, cy, R * .05, c.accent);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function drawMatriu({ ctx, W, H }, d, c) {
+    const cols = 24, rows = 12, padX = W * .06, top = H * .06, bottom = H * .84;
+    const gx = (W - padX * 2) / (cols - 1), gy = (bottom - top) / (rows - 1), r = Math.min(gx, gy) * .26;
+    const nowMin = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60, cur = Math.floor(nowMin / 5);
+    for (let col = 0; col < cols; col++) {
+      for (let row = 0; row < rows; row++) {
+        const idx = col * 12 + row, min = idx * 5, awake = min >= settings.start && min < settings.end, x = padX + col * gx, y = top + row * gy;
+        if (idx < cur) dotAt(ctx, x, y, r, c.accent, awake ? 1 : .45);
+        else if (idx === cur) dotAt(ctx, x, y, r * 1.25, c.accent, .4 + .6 * Math.abs(Math.sin(performance.now() / 500)));
+        else dotAt(ctx, x, y, r, awake ? c.muted : c.detail, awake ? .55 : 1);
+      }
+      if (col % 6 === 0) say(ctx, String(col), padX + col * gx, H * .94, col === d.getHours() ? c.fg : c.muted);
+    }
+    return nowMin < settings.end ? `queden ${formatRemaining(Math.round(settings.end - Math.max(nowMin, settings.start)))} de vetlla` : "hora de dormir";
+  }
+
+  // Sun: real sunrise and sunset for Barcelona (NOAA approximation).
+  const LAT = 41.39, LON = 2.17;
+  function sunTimes(d) {
+    const N = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5);
+    const decl = 23.44 * Math.sin(2 * Math.PI * (284 + N) / 365) * Math.PI / 180, lat = LAT * Math.PI / 180;
+    const cosH = (Math.sin(-0.833 * Math.PI / 180) - Math.sin(lat) * Math.sin(decl)) / (Math.cos(lat) * Math.cos(decl));
+    const Hdeg = Math.acos(Math.min(1, Math.max(-1, cosH))) * 180 / Math.PI;
+    const B = 2 * Math.PI * (N - 81) / 364, eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+    const noon = 12 * 60 - d.getTimezoneOffset() - LON * 4 - eot;
+    return { rise: noon - Hdeg * 4, set: noon + Hdeg * 4 };
+  }
+  function drawSol({ ctx, W, H }, d, c) {
+    const { rise, set } = sunTimes(d), nowMin = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+    const cx = W / 2, hy = H * .68, R = Math.min(W * .4, H * .55), N = 36;
+    for (let i = 0; i <= 40; i++) dotAt(ctx, cx - R * 1.12 + i * (R * 2.24 / 40), hy, 1.4, c.muted);
+    for (let i = 0; i <= N; i++) { const a = Math.PI + i / N * Math.PI; dotAt(ctx, cx + R * Math.cos(a), hy + R * Math.sin(a), 2, c.detail); }
+    for (let i = 0; i <= N; i += 2) { const a = i / N * Math.PI; dotAt(ctx, cx + R * .55 * Math.cos(a), hy + R * .55 * Math.sin(a) * .5, 1.2, c.detail); }
+    say(ctx, `↑ ${hm(rise)}`, cx - R, hy + 18, c.muted); say(ctx, `${hm(set)} ↓`, cx + R, hy + 18, c.muted);
+    if (nowMin >= rise && nowMin <= set) {
+      const f = (nowMin - rise) / (set - rise), a = Math.PI + f * Math.PI;
+      for (let i = 0; i <= N * f; i++) { const b = Math.PI + i / N * Math.PI; dotAt(ctx, cx + R * Math.cos(b), hy + R * Math.sin(b), 2, c.accent); }
+      const sx = cx + R * Math.cos(a), sy = hy + R * Math.sin(a);
+      for (let k = 0; k < 12; k++) { const b = k / 12 * Math.PI * 2 + performance.now() / 4000; dotAt(ctx, sx + Math.cos(b) * R * .17, sy + Math.sin(b) * R * .17, 1.6, c.accent, .7); }
+      dotAt(ctx, sx, sy, R * .1, c.accent);
+      return `queden ${formatRemaining(Math.round(set - nowMin))} de llum`;
+    }
+    const len = 1440 - (set - rise), into = nowMin > set ? nowMin - set : nowMin + 1440 - set, a = into / len * Math.PI;
+    const mx = cx + R * .55 * Math.cos(Math.PI - a), my = hy + R * .55 * Math.sin(a) * .5;
+    dotAt(ctx, mx, my, R * .08, c.fg); dotAt(ctx, mx + R * .035, my - R * .02, R * .07, c.bg);
+    return `el sol surt d'aquí a ${formatRemaining(Math.round((rise - nowMin + 1440) % 1440))}`;
+  }
+
+  function drawSorra({ ctx, W, H }, d, c) {
+    const widths = [11, 10, 9, 8, 7, 6, 5, 4], g = Math.min(W / 16, H / 20), r = g * .3, cx = W / 2, neck = H / 2;
+    const m = d.getMinutes(), s = d.getSeconds() + d.getMilliseconds() / 1000, remaining = 60 - m, top = [], bottom = [];
+    widths.slice().reverse().forEach((w, ri) => { const y = neck - g * (ri + 1.2); for (let i = 0; i < w; i++) top.push([cx + (i - (w - 1) / 2) * g, y]); });
+    widths.forEach((w, ri) => { const y = neck + g * (8.2 - ri); for (let i = 0; i < w; i++) bottom.push([cx + (i - (w - 1) / 2) * g, y]); });
+    const order = list => list.slice().sort((a, b) => b[1] - a[1] || Math.abs(a[0] - cx) - Math.abs(b[0] - cx));
+    const tOrder = order(top), bOrder = order(bottom);
+    tOrder.forEach(([x, y], i) => dotAt(ctx, x, y, r, i < remaining - 1 ? c.fg : c.detail));
+    bOrder.forEach(([x, y], i) => dotAt(ctx, x, y, r, i < m ? c.accent : c.detail));
+    const from = tOrder[Math.max(0, remaining - 1)], to = bOrder[Math.min(59, m)], f = s / 60;
+    const y = f < 1 / 3 ? from[1] + (neck - from[1]) * f * 3 : neck + (to[1] - neck) * ((f - 1 / 3) * 1.5) ** 2;
+    const x = f < 1 / 3 ? from[0] + (cx - from[0]) * f * 3 : cx + (to[0] - cx) * ((f - 1 / 3) * 1.5);
+    dotAt(ctx, x, y, r * 1.1, c.accent);
+    return `falten ${remaining} min per a les ${(d.getHours() + 1) % 24}`;
+  }
+
+  // Day line: waking hours as a ruler with today's timed items (each shown as one hour).
+  function drawLinia({ ctx, W, H }, d, c) {
+    const a0 = settings.start, a1 = settings.end, L = W * .05, Rr = W * .95, x = min => L + (Math.min(a1, Math.max(a0, min)) - a0) / (a1 - a0) * (Rr - L);
+    const y = H * .55, nowMin = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+    const events = itemsOn(keyOf(d)).filter(t => t.time).map(t => [toMin(t.time), toMin(t.time) + 60, t.text, t.done]);
+    for (let mm = Math.ceil(a0 / 15) * 15; mm <= a1; mm += 15) {
+      const hr = mm % 60 === 0;
+      ctx.strokeStyle = mm <= nowMin ? c.muted : c.detail; ctx.lineWidth = hr ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(x(mm), y + 10); ctx.lineTo(x(mm), y + (hr ? 20 : 14)); ctx.stroke();
+      if (hr && (mm / 60) % 3 === 0) say(ctx, String(mm / 60), x(mm), y + 32, c.muted);
+    }
+    ctx.lineCap = "round"; ctx.strokeStyle = c.detail; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(Rr, y); ctx.stroke();
+    if (nowMin > a0) { ctx.strokeStyle = c.muted; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(x(nowMin), y); ctx.stroke(); }
+    let current = null, next = null;
+    events.forEach(([s, e, label, done], i) => {
+      const past = done || e <= nowMin, on = s <= nowMin && nowMin < e;
+      if (on && !done) current = [s, e, label]; if (!next && s > nowMin && !done) next = [s, e, label];
+      ctx.strokeStyle = past ? c.muted : c.accent; ctx.lineWidth = 14; ctx.beginPath(); ctx.moveTo(x(s) + 4, y); ctx.lineTo(Math.max(x(s) + 4, x(e) - 4), y); ctx.stroke();
+      const t = label.length > 14 ? label.slice(0, 13) + "…" : label;
+      say(ctx, t, (x(s) + x(e)) / 2, y - (i % 2 ? 40 : 24), past ? c.muted : c.fg, 10, "center", on ? 700 : 400);
+    });
+    if (nowMin >= a0 && nowMin <= a1) {
+      const nx = x(nowMin); ctx.strokeStyle = c.fg; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(nx, y - 14); ctx.lineTo(nx, y + 14); ctx.stroke();
+      dotAt(ctx, nx, y - 16, 3.5, c.fg);
+    }
+    if (!events.length) return "afegeix hores a l'agenda (16:30 metge) i sortiran aquí";
+    return current ? `ara: ${current[2]}` : next ? `pròxim: ${hm(next[0])} ${next[2]}, d'aquí a ${formatRemaining(Math.round(next[0] - nowMin))}` : "res més avui";
+  }
+
+  const FACES = { esfera: drawEsfera, matriu: drawMatriu, sol: drawSol, sorra: drawSorra, linia: drawLinia };
+  function drawAlt(kind, d) {
+    const box = altBox(), read = box.querySelector(".alt-read");
+    let msg = "";
+    if (kind === "quarts") msg = drawQuarts(box, d);
+    else {
+      const p = prepCanvas(box.querySelector("canvas"));
+      if (p) msg = FACES[kind](p, d, { fg: css("--fg"), bg: css("--bg"), accent: css("--accent"), detail: css("--detail"), muted: css("--muted") });
+    }
+    if (read.textContent !== msg) read.textContent = msg;
+  }
+
+  applyClock();
   restart();
 
   const floatBtn = $("floatBtn");
