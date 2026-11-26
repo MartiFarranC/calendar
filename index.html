@@ -1,0 +1,463 @@
+<meta charset="utf-8">
+<title>Calendari fase 1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@500;800&family=Space+Mono:wght@400;700&display=swap">
+<style>
+  /* Layout: three rows at 1/8, 1/2 and 3/8 of the screen; the last splits 2/3 month and 1/3 tasks. Mirrors MainScreen.kt. */
+  :root {
+    --bg: #F7F5F0; --fg: #1A1A1A; --muted: #8C8A85; --detail: #D9D6CF; --accent: #E5463A; --on-accent: #FFFFFF;
+    --dot: "Doto", ui-monospace, monospace;
+    --mono: "Space Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0F0F10; --fg: #F2F0EB; --muted: #76767A; --detail: #2A2A2D; --accent: #FF5C4F; --on-accent: #0F0F10; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --bg: #0F0F10; --fg: #F2F0EB; --muted: #76767A; --detail: #2A2A2D; --accent: #FF5C4F; --on-accent: #0F0F10; color-scheme: dark }
+
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--mono); }
+  .screen { height: 100%; min-height: 640px; display: grid; grid-template-rows: 1fr 4fr 3fr;
+    padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); padding-block: 8px;
+    max-width: 1100px; margin: 0 auto; box-sizing: border-box; }
+
+  /* Row 1: header */
+  header { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .head-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .eyebrow { color: var(--accent); font-size: 11px; letter-spacing: 2px; }
+  .longdate { font-weight: 700; font-size: 15px; }
+  .settings { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--detail); background: none; cursor: pointer;
+    display: grid; place-items: center; padding: 0; }
+  .settings svg { width: 18px; height: 18px; }
+
+  /* Row 2: day + ring */
+  .day { position: relative; display: grid; grid-template-rows: 1fr auto; min-height: 0;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--detail) 60%, transparent) 1px, transparent 1.5px);
+    background-size: 14px 14px; background-position: 7px 7px; }
+  .pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; min-height: 0; }
+  .pages::-webkit-scrollbar { display: none; }
+  .page { flex: 0 0 100%; scroll-snap-align: start; display: grid; place-items: center; min-height: 0; }
+  .ring { position: relative; height: 92%; aspect-ratio: 1; max-width: 92%; display: grid; place-items: center; }
+  .pager-dots { display: flex; justify-content: center; }
+  .pager-dots button { width: 24px; height: 24px; border: 0; background: none; padding: 0; cursor: pointer; display: grid; place-items: center; }
+  .pager-dots button::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--detail); transition: all .2s; }
+  .pager-dots button[aria-selected="true"]::after { width: 8px; height: 8px; background: var(--accent); }
+
+  /* Page 2: the clock taken apart (ClockSection.kt) */
+  .clockpage { container-type: size; }
+  .pieces { --piece: min(30cqw, 50cqh); display: flex; align-items: flex-end; gap: calc(var(--piece) * .35); }
+  .piece { display: grid; justify-items: center; gap: 6px; }
+  .remaining { color: var(--accent); font-size: 11px; min-height: 1.3em; }
+  .sec { width: var(--piece); height: var(--piece); border-radius: 50%; box-sizing: border-box;
+    border: calc(var(--piece) / 40) solid var(--detail); padding: calc(var(--piece) / 40 * 2); }
+  .sec div { width: 100%; height: 100%; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--f, 0) * 1turn), transparent 0); }
+  /* Bars drawn on canvas by drawBar(), a port of ClockBar.kt */
+  .bar { width: calc(var(--piece) * .6); height: var(--piece); display: block; }
+  .clockpage { position: relative; }
+  .clockpage [hidden] { display: none !important; }
+  .hpieces { --piece: min(28cqw, 50cqh); display: flex; align-items: center; gap: 24px; width: 100%; }
+  .hpieces > .piece { flex: none; }
+  .hpieces .rows { flex: 1; min-width: 0; display: grid; gap: 20px; }
+  .hrow { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 14px; }
+  .hrow .meta { display: grid; gap: 2px; }
+  .hrow .digits { font-size: 24px; }
+  .hrow .bar { width: 100%; height: 56px; }
+  .pills { position: absolute; top: 8px; right: 0; display: flex; gap: 8px; z-index: 1; }
+  .floatnote { color: var(--muted); font-size: 12px; text-align: center; padding: 16px; }
+  .pills button { font: inherit; font-size: 11px; letter-spacing: 1px; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--detail); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  .digits { font-family: var(--dot); font-weight: 800; font-size: 28px; font-variant-numeric: tabular-nums; }
+  .ring canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ring-text { position: relative; display: grid; justify-items: center; gap: 4px; background: var(--bg); padding: 6px 14px; border-radius: 12px; }
+  .weekday { color: var(--muted); font-size: 13px; letter-spacing: 3px; text-transform: uppercase; }
+  .number { font-family: var(--dot); font-weight: 800; line-height: .9; font-size: clamp(72px, 15vh, 180px); font-variant-numeric: tabular-nums; }
+  .left { color: var(--accent); font-size: 12px; }
+
+  /* Row 3: month + tasks */
+  .bottom { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; padding-top: 12px; min-height: 0; }
+  .label { color: var(--muted); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+  .label.strong { color: var(--fg); font-weight: 700; }
+  .month { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .grid { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr; min-height: 0; }
+  .initials { display: grid; grid-template-columns: repeat(7, 1fr); margin: 8px 0 4px; text-align: center; }
+  .initials span { font-size: 10px; }
+  .cell { display: grid; place-items: center; min-height: 0; }
+  .cell span { font-family: var(--dot); font-weight: 800; font-size: 16px; height: 90%; max-height: 40px; max-width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; }
+  .cell.past span { color: var(--muted); }
+  .cell.weekend span { color: var(--accent); }
+  .cell.today span { background: var(--accent); color: var(--on-accent); }
+
+  .tasks { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .tasks-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .tasks ul { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: grid; align-content: start; gap: 10px; }
+  .tasks li button { all: unset; cursor: pointer; display: flex; gap: 8px; align-items: center; font-size: 13px; overflow-wrap: anywhere; }
+  .tick { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; display: grid; place-items: center; transition: border-color .2s; }
+  .tick::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform .2s; }
+  .done .tick { border-color: var(--accent); }
+  .done .tick::after { transform: scale(1); }
+  .done .text { color: var(--muted); text-decoration: line-through; }
+  .add { display: flex; gap: 4px; align-items: center; padding-top: 8px; font-size: 13px; }
+  .add span { color: var(--accent); }
+  .add input { all: unset; flex: 1; min-width: 0; font: inherit; color: var(--fg); caret-color: var(--accent); }
+  .add input::placeholder { color: var(--muted); }
+  button:focus-visible, input:focus-visible, .tasks li button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* Simulator controls, outside the app itself */
+  .sim { position: fixed; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    display: flex; gap: 10px; align-items: center; font-size: 11px; color: var(--muted);
+    background: var(--bg); border: 1px solid var(--detail); border-radius: 999px; padding: 6px 12px; }
+  .sim input { accent-color: var(--accent); width: 120px; }
+  .sim button { font: inherit; color: var(--fg); background: none; border: 1px solid var(--detail); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+  .toast { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg);
+    font-size: 12px; padding: 8px 14px; border-radius: 999px; }
+  @media (max-width: 520px) { .longdate { font-size: 13px; } .cell span { font-size: 13px; } .tasks li button, .add { font-size: 12px; }
+    .bottom { gap: 14px; } .screen { height: auto; min-height: 100%; }
+    .sim { position: static; margin: 4px auto 16px; width: fit-content; } .sim input { width: 90px; } }
+  /* Opened as a small floating window (#flotant): only the clock. */
+  html.compact body { margin: 0; }
+  html.compact .screen { grid-template-rows: 1fr; height: 100% !important; min-height: 0 !important; padding: 8px 12px; }
+  html.compact header, html.compact .bottom, html.compact .pager-dots, html.compact .sim, html.compact #page-dia, html.compact #floatBtn { display: none !important; }
+</style>
+<script>if (location.hash === "#flotant") document.documentElement.classList.add("compact");</script>
+
+<div class="screen">
+  <header>
+    <div class="head-text">
+      <div class="eyebrow">● AVUI</div>
+      <div class="longdate" id="longdate">dimarts, 27 d'octubre de 2026</div>
+    </div>
+    <button class="settings" id="settings" type="button" aria-label="Configuració">
+      <svg viewBox="0 0 18 18" aria-hidden="true">
+        <g fill="var(--fg)"><circle cx="2" cy="2" r="1.6"/><circle cx="9" cy="2" r="1.6"/><circle cx="16" cy="2" r="1.6"/>
+        <circle cx="2" cy="9" r="1.6"/><circle cx="16" cy="9" r="1.6"/>
+        <circle cx="2" cy="16" r="1.6"/><circle cx="9" cy="16" r="1.6"/><circle cx="16" cy="16" r="1.6"/></g>
+        <circle cx="9" cy="9" r="1.6" fill="var(--accent)"/>
+      </svg>
+    </button>
+  </header>
+
+  <section class="day" aria-label="Avui">
+    <div class="pages" id="pages">
+      <div class="page" id="page-dia">
+        <div class="ring">
+          <canvas id="ring" aria-hidden="true"></canvas>
+          <div class="ring-text">
+            <div class="weekday" id="weekday">dimarts</div>
+            <div class="number" id="number">27</div>
+            <div class="left" id="left">queden 9 h 0 min</div>
+          </div>
+        </div>
+      </div>
+      <div class="page clockpage" id="page-rellotge">
+        <div class="pills">
+          <button type="button" id="styleBtn" aria-label="Estil de les barres">REGLE</button>
+          <button type="button" id="dirBtn" aria-label="Direcció de les barres">↕</button>
+          <button type="button" id="floatBtn" aria-label="Obre el rellotge en una finestra flotant">⧉ FLOTANT</button>
+        </div>
+        <div class="pieces" id="vClock">
+          <div class="piece"><div class="sec"><div class="secFill"></div></div><div class="digits sDigits">00</div><div class="label">Seg</div><div class="remaining"></div></div>
+          <div class="piece"><canvas class="bar" data-bar="m"></canvas><div class="digits mDigits">00</div><div class="label">Min</div><div class="remaining minLeft"></div></div>
+          <div class="piece"><canvas class="bar" data-bar="h"></canvas><div class="digits hDigits">00</div><div class="label">Hora</div><div class="remaining hourLeft"></div></div>
+        </div>
+        <div class="hpieces" id="hClock" hidden>
+          <div class="piece"><div class="sec"><div class="secFill"></div></div><div class="digits sDigits">00</div><div class="label">Seg</div></div>
+          <div class="rows">
+            <div class="hrow"><div class="meta"><div class="digits mDigits">00</div><div class="label">Min</div><div class="remaining minLeft"></div></div><canvas class="bar" data-bar="m"></canvas></div>
+            <div class="hrow"><div class="meta"><div class="digits hDigits">00</div><div class="label">Hora</div><div class="remaining hourLeft"></div></div><canvas class="bar" data-bar="h"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pager-dots" role="tablist">
+      <button type="button" role="tab" aria-selected="true" aria-label="Dia" data-page="0"></button>
+      <button type="button" role="tab" aria-selected="false" aria-label="Rellotge" data-page="1"></button>
+    </div>
+  </section>
+
+  <section class="bottom">
+    <div class="month">
+      <div class="label strong" id="monthLabel">octubre 2026</div>
+      <div class="initials label"><span>dl</span><span>dt</span><span>dc</span><span>dj</span><span>dv</span><span>ds</span><span>dg</span></div>
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="tasks">
+      <div class="tasks-head"><span class="label strong">Tasques</span><span class="label" id="count">1/4</span></div>
+      <ul id="todos"></ul>
+      <form class="add" id="addForm"><span>+</span><input id="newTodo" placeholder="afegeix" autocomplete="off" aria-label="Nova tasca"></form>
+    </div>
+  </section>
+</div>
+
+<div class="sim">
+  <label for="simTime">Simula l'hora</label>
+  <input type="range" id="simTime" min="300" max="1439" step="5">
+  <span id="simLabel">—</span>
+  <button type="button" id="nowBtn">Ara</button>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+  const WEEKDAYS = ["diumenge","dilluns","dimarts","dimecres","dijous","divendres","dissabte"];
+  const MONTHS = ["gener","febrer","març","abril","maig","juny","juliol","agost","setembre","octubre","novembre","desembre"];
+  const START = 7 * 60, END = 23 * 60, RING_DOTS = 48;
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let simulated = null, shown = reduceMotion ? null : 0, target = 0;
+
+  // Same rules as AwakeHours, catalanLongDate and monthWeeks in shared/.
+  const elapsedFraction = m => Math.min(1, Math.max(0, (m - START) / (END - START)));
+  const minutesLeft = m => Math.max(0, END - Math.max(m, START));
+  const formatRemaining = min => { const h = Math.floor(min / 60), r = min % 60; return h > 0 ? `${h} h ${r} min` : `${r} min`; };
+  const hhmm = m => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+  const longDate = d => { const mo = MONTHS[d.getMonth()]; return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${"aeiou".includes(mo[0]) ? "d'" : "de "}${mo} de ${d.getFullYear()}`; };
+
+  const $ = id => document.getElementById(id);
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  function drawRing(value) {
+    const c = $("ring"), dpr = devicePixelRatio || 1, size = c.clientWidth;
+    if (!size) return;
+    c.width = c.height = size * dpr;
+    const ctx = c.getContext("2d"); ctx.scale(dpr, dpr);
+    const dotR = size / 70, radius = size / 2 - dotR * 2, lit = value * RING_DOTS;
+    const detail = css("--detail"), accent = css("--accent");
+    for (let i = 0; i < RING_DOTS; i++) {
+      const a = -Math.PI / 2 + 2 * Math.PI * i / RING_DOTS;
+      const x = size / 2 + radius * Math.cos(a), y = size / 2 + radius * Math.sin(a);
+      const amount = Math.min(1, Math.max(0, lit - (RING_DOTS - 1 - i)));
+      ctx.globalAlpha = 1; ctx.fillStyle = detail; ctx.beginPath(); ctx.arc(x, y, dotR, 0, 2 * Math.PI); ctx.fill();
+      if (amount > 0) { ctx.globalAlpha = amount; ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(x, y, dotR, 0, 2 * Math.PI); ctx.fill(); }
+    }
+  }
+
+  function animate() {
+    if (shown === null) { drawRing(target); return; }
+    shown += (target - shown) * 0.08;
+    if (Math.abs(target - shown) < 0.001) shown = target;
+    drawRing(shown);
+    if (shown !== target) requestAnimationFrame(animate);
+  }
+
+  function renderGrid(d) {
+    const year = d.getFullYear(), month = d.getMonth(), today = d.getDate();
+    const leading = (new Date(year, month, 1).getDay() + 6) % 7;
+    const count = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < leading; i++) cells.push("<div class=\"cell\"></div>");
+    for (let day = 1; day <= count; day++) {
+      const col = (leading + day - 1) % 7;
+      const cls = day === today ? "today" : day < today ? "past" : col >= 5 ? "weekend" : "";
+      cells.push(`<div class="cell ${cls}"><span>${day}</span></div>`);
+    }
+    while (cells.length % 7) cells.push("<div class=\"cell\"></div>");
+    $("grid").innerHTML = cells.join("");
+    $("monthLabel").textContent = `${MONTHS[month]} ${year}`;
+  }
+
+  function render() {
+    const d = new Date();
+    const minutes = simulated ?? d.getHours() * 60 + d.getMinutes();
+    $("longdate").textContent = longDate(d);
+    $("weekday").textContent = WEEKDAYS[d.getDay()];
+    $("number").textContent = d.getDate();
+    $("left").textContent = `queden ${formatRemaining(minutesLeft(minutes))}`;
+    $("simTime").value = minutes; $("simLabel").textContent = hhmm(minutes);
+    renderGrid(d);
+    target = 1 - elapsedFraction(minutes);
+    animate();
+  }
+
+  // Tasks: example items, kept in this browser only.
+  const SAMPLE = [{ id: 1, text: "Comprar pa", done: false }, { id: 2, text: "Trucar a l'àvia", done: true },
+                  { id: 3, text: "Revisar el PR del calendari", done: false }, { id: 4, text: "Sortir a córrer", done: false }];
+  let todos;
+  try { todos = JSON.parse(localStorage.getItem("todos")) || SAMPLE; } catch { todos = SAMPLE; }
+  const save = () => { try { localStorage.setItem("todos", JSON.stringify(todos)); } catch {} };
+  function renderTodos() {
+    const ul = $("todos"); ul.innerHTML = "";
+    for (const t of todos) {
+      const li = document.createElement("li"); if (t.done) li.className = "done";
+      const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "checkbox"); b.setAttribute("aria-checked", t.done);
+      const tick = document.createElement("span"); tick.className = "tick";
+      const text = document.createElement("span"); text.className = "text"; text.textContent = t.text;
+      b.append(tick, text);
+      b.addEventListener("click", () => { t.done = !t.done; save(); renderTodos(); });
+      li.append(b); ul.append(li);
+    }
+    $("count").textContent = `${todos.filter(t => t.done).length}/${todos.length}`;
+  }
+  $("addForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const text = $("newTodo").value.trim(); if (!text) return;
+    todos.push({ id: Math.max(0, ...todos.map(t => t.id)) + 1, text, done: false });
+    $("newTodo").value = ""; save(); renderTodos();
+  });
+
+  let toastTimer;
+  $("settings").addEventListener("click", () => {
+    const t = $("toast"); t.textContent = "La configuració arriba a la fase 4"; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 2200);
+  });
+  $("simTime").addEventListener("input", e => { simulated = Number(e.target.value); render(); });
+  $("nowBtn").addEventListener("click", () => { simulated = null; render(); });
+  addEventListener("resize", () => drawRing(shown ?? target));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => drawRing(shown ?? target));
+  new MutationObserver(() => drawRing(shown ?? target)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // Page 2: real time, read every frame like ClockSection does.
+  const pad = n => String(n).padStart(2, "0");
+  // Bar styles, ported from ClockBar.kt: "along" runs bottom-to-top (vertical) or left-to-right, "across" is the thickness.
+  const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"]];
+  let styleIndex = 0, vertical = true;
+  const tickLength = (u, s, f, q) => u % 15 === 0 ? q : u % 5 === 0 ? f : s;
+  function drawBar(canvas, filled, progress, style, isVertical, unitSeconds = 1) {
+    const dpr = devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
+    if (!W || !H) return;
+    if (canvas.width !== W * dpr || canvas.height !== H * dpr) { canvas.width = W * dpr; canvas.height = H * dpr; }
+    const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const L = isVertical ? H : W, T = isVertical ? W : H;
+    const P = (a, c) => isVertical ? [c, H - a] : [a, c];
+    const accent = css("--accent"), detail = css("--detail"), fg = css("--fg"), muted = css("--muted"), bg = css("--bg");
+    const line = (a, c0, c1, color, w = 1) => { const [x0, y0] = P(a, c0), [x1, y1] = P(a, c1); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+    const along = (a0, a1, c, color, w) => { const [x0, y0] = P(a0, c), [x1, y1] = P(a1, c); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+    const box = (a0, a1, c0, c1) => isVertical ? [c0, H - a1, c1 - c0, a1 - a0] : [a0, c0, a1 - a0, c1 - c0];
+    const rect = (a0, a1, c0, c1, color, rounded = true) => { const [x, y, w, h] = box(a0, a1, c0, c1); ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, w, h, rounded ? Math.min(w, h) / 2 : 0); ctx.fill(); };
+    const label = (t, a, c) => { const [x, y] = P(a, c); ctx.fillStyle = muted; ctx.font = "9px 'Space Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t, x, y); };
+    const quarters = (c, from = 15, to = 45) => { for (let n = from; n <= to; n += 15) label(String(n), L * n / 60, c); };
+
+    if (style === "ruler") {
+      const bar = T * .55;
+      for (let i = 0; i <= 60; i++) { const len = tickLength(i, T * .08, T * .14, T * .24); line(L * i / 60, bar - T * .06 - len, bar - T * .06, i % 15 ? muted : fg); }
+      quarters(T * .12);
+      rect(0, L, bar, T, detail);
+      if (filled > 0) { ctx.save(); const [x, y, w, h] = box(0, L, bar, T); ctx.beginPath(); ctx.roundRect(x, y, w, h, Math.min(w, h) / 2); ctx.clip(); rect(0, L * filled / 60, bar, T, accent, false); ctx.restore(); }
+    } else if (style === "needle") {
+      const spine = T * .4;
+      along(0, L, spine, detail, 1);
+      for (let i = 0; i <= 60; i++) { const len = tickLength(i, T * .1, T * .18, T * .28); line(L * i / 60, spine, spine + len, i <= filled ? fg : detail, i % 5 ? 1 : 1.5); }
+      quarters(T * .86, 0, 60);
+      const at = L * filled / 60;
+      line(at, T * .1, spine + T * .3, accent, 2);
+      const [tx, ty] = P(at, T * .16), [ax, ay] = P(at - T * .06, 0), [bx, by] = P(at + T * .06, 0);
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(ax, ay); ctx.lineTo(bx, by); ctx.fill();
+    } else if (style === "marks") {
+      const centre = T * .62;
+      for (let i = 0; i < 60; i++) {
+        const half = tickLength(i + 1, T * .16, T * .26, T * .36) / 2;
+        line(L * (i + .5) / 60, centre - half, centre + half, i < filled ? accent : i === filled ? `color-mix(in srgb, ${accent} 35%, transparent)` : detail, 1.8);
+      }
+      quarters(T * .12);
+    } else if (style === "thermometer") {
+      const c0 = T * .42, c1 = T * .58, bulb = T * .16, start = bulb * 2, scale = L - start;
+      rect(start - bulb, L, c0, c1, detail);
+      const [cx, cy] = P(bulb, (c0 + c1) / 2); ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(cx, cy, bulb, 0, Math.PI * 2); ctx.fill();
+      rect(bulb, start + scale * filled / 60, c0, c1, accent);
+      for (let i = 0; i <= 60; i++) { const a = start + scale * i / 60, len = tickLength(i, T * .05, T * .09, T * .13); line(a, c0 - T * .04 - len, c0 - T * .04, muted); line(a, c1 + T * .04, c1 + T * .04 + len, muted); }
+      for (let n = 15; n <= 60; n += 15) label(String(n), start + scale * n / 60, T * .88);
+    } else if (style === "typewriter") {
+      // One mark typed per unit; when the line is full the carriage slides back during the first 0.6 s.
+      const base = T * .5, slot = L / 60, mL = Math.min(slot * .55, T * .12), mH = T * .2;
+      const elapsed = progress * unitSeconds, returning = filled === 0 && elapsed < .6;
+      const r = returning ? elapsed / .6 : 1, eased = 1 - (1 - r) ** 3;
+      const typed = returning ? 60 : filled, ink = returning ? 1 - eased : 1;
+      along(0, L, base + mH * .75, detail, 1);
+      for (let i = 0; i < 60; i++) {
+        const a = slot * (i + .5);
+        if (i < typed) {
+          const wob = ((i * 37) % 5 - 2) * T * .012;
+          ctx.globalAlpha = ink; rect(a - mL / 2, a + mL / 2, base - mH / 2 + wob, base + mH / 2 + wob, (i + 1) % 5 === 0 ? accent : fg, false); ctx.globalAlpha = 1;
+        } else { const [x, y] = P(a, base); ctx.fillStyle = detail; ctx.beginPath(); ctx.arc(x, y, 1, 0, Math.PI * 2); ctx.fill(); }
+      }
+      quarters(T * .12);
+      const car = returning ? L - (L - slot * .5) * eased : slot * (filled + .5);
+      line(car, T * .26, T * .34, accent, 2);
+      const [tx, ty] = P(car, base + mH * .95), [ax, ay] = P(car - T * .06, T * .9), [bx, by] = P(car + T * .06, T * .9);
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(ax, ay); ctx.lineTo(bx, by); ctx.fill();
+    } else {
+      const value = filled + progress, step = L / 24, middle = L / 2, first = Math.floor(value - 13);
+      for (let i = first; i <= first + 26; i++) {
+        const a = middle + (i - value) * step; if (a < 0 || a > L) continue;
+        const u = ((i % 60) + 60) % 60, len = tickLength(u, T * .14, T * .24, T * .36);
+        line(a, T * .12, T * .12 + len, muted, u % 5 ? 1 : 1.5);
+        if (u % 5 === 0) label(String(u), a, T * .74);
+      }
+      const fade = L * .22;
+      const g = isVertical ? ctx.createLinearGradient(0, H, 0, 0) : ctx.createLinearGradient(0, 0, W, 0);
+      ctx.fillStyle = bg; const hex = ctx.fillStyle, clear = `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},0)`;
+      g.addColorStop(0, bg); g.addColorStop(fade / L, clear); g.addColorStop(1 - fade / L, clear); g.addColorStop(1, bg);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      line(middle, 0, T * .58, accent, 2.5);
+    }
+  }
+
+  const styleBtn = $("styleBtn"), dirBtn = $("dirBtn");
+  styleBtn.addEventListener("click", () => { styleIndex = (styleIndex + 1) % STYLES.length; styleBtn.textContent = STYLES[styleIndex][1]; });
+  dirBtn.addEventListener("click", () => { vertical = !vertical; dirBtn.textContent = vertical ? "↕" : "↔"; clock.querySelector("#vClock").hidden = !vertical; clock.querySelector("#hClock").hidden = vertical; });
+  // The clock page can move into an always-on-top Picture-in-Picture window, so look things up from it, not the document.
+  const clock = $("page-rellotge"), all = sel => clock.querySelectorAll(sel);
+  let clockWin = window, loop = 0;
+  function tick(id) {
+    if (id !== loop) return;
+    const d = new Date(), ms = d.getMilliseconds() / 1000;
+    all(".secFill").forEach(e => e.style.setProperty("--f", ms));
+    const root = clock.querySelector(vertical ? "#vClock" : "#hClock");
+    root.querySelectorAll("[data-bar]").forEach(c => {
+      const m = c.dataset.bar === "m";
+      drawBar(c, m ? d.getSeconds() : d.getMinutes(), m ? ms : (d.getSeconds() + ms) / 60, STYLES[styleIndex][0], vertical, m ? 1 : 60);
+    });
+    all(".minLeft").forEach(e => e.textContent = `falten ${60 - d.getSeconds()} s`);
+    all(".hourLeft").forEach(e => e.textContent = `falten ${60 - d.getMinutes()} min`);
+    all(".sDigits").forEach(e => e.textContent = pad(d.getSeconds()));
+    all(".mDigits").forEach(e => e.textContent = pad(d.getMinutes()));
+    all(".hDigits").forEach(e => e.textContent = pad(d.getHours()));
+    clockWin.requestAnimationFrame(() => tick(id));
+  }
+  const restart = () => tick(++loop);
+  restart();
+
+  const floatBtn = $("floatBtn");
+  floatBtn.addEventListener("click", async () => {
+    if (clockWin !== window) { clockWin.close(); return; }
+    let pip = null;
+    try { pip = await window.documentPictureInPicture?.requestWindow({ width: 260, height: 200 }); } catch (e) { console.warn(e); }
+    if (!pip) {
+      // No always-on-top window here (another browser, or the page is shown inside another one): open a small normal window instead.
+      // A blank window shares this page's origin, so the clock can move into it just like into the Picture-in-Picture one.
+      pip = window.open("", "calendari-flotant", "popup,width=260,height=200");
+      if (!pip) { alert("El navegador ha bloquejat la finestra. Permet les finestres emergents per a aquesta pàgina i torna-ho a provar."); return; }
+      try { pip.document.title = "Calendari"; } catch {
+        // The preview inside Claude keeps this page in its own sandbox, so it cannot reach the new window.
+        pip.close();
+        alert("Des de la vista prèvia de Claude no es pot obrir la finestra flotant. Descarrega el fitxer calendari.html i obre'l directament amb Edge o Chrome.");
+        return;
+      }
+    }
+    document.querySelectorAll("style, link[rel=stylesheet]").forEach(n => pip.document.head.append(n.cloneNode(true)));
+    const extra = pip.document.createElement("style");
+    extra.textContent = "html,body{margin:0;height:100%} .pipwrap{container-type:size;height:100%;padding:6px 10px;box-sizing:border-box} .pipwrap .page{width:100%;height:100%}" +
+      // Small and quiet: no seconds circle, smaller digits, and the buttons only show under the pointer.
+      " .pipwrap .piece:has(.sec){display:none} .pipwrap .pieces{--piece:min(36cqw,52cqh)} .pipwrap .digits{font-size:20px}" +
+      " .pipwrap .label,.pipwrap .remaining{font-size:10px} .pipwrap .hpieces .rows{gap:10px} .pipwrap .hrow{grid-template-columns:76px 1fr;gap:8px} .pipwrap .remaining{white-space:nowrap}" +
+      " .pipwrap .hrow .digits{font-size:18px} .pipwrap .hrow .bar{height:36px} .pipwrap .pills{top:0;opacity:0;transition:opacity .2s} .pipwrap:hover .pills{opacity:1} .pipwrap .pills{gap:4px} .pipwrap .pills button{padding:3px 8px;font-size:10px}";
+    pip.document.head.append(extra);
+    const theme = document.documentElement.dataset.theme; if (theme) pip.document.documentElement.dataset.theme = theme;
+    const wrap = pip.document.createElement("div"); wrap.className = "pipwrap"; pip.document.body.append(wrap);
+    const note = document.createElement("div"); note.className = "page floatnote"; note.textContent = "El rellotge és a la finestra flotant.";
+    clock.before(note);
+    wrap.append(clock); clockWin = pip; floatBtn.textContent = "⧉ TORNA"; restart();
+    pip.addEventListener("pagehide", () => {
+      note.replaceWith(clock); clockWin = window; floatBtn.textContent = "⧉ FLOTANT"; restart();
+    });
+  });
+
+  const pages = $("pages"), tabs = [...document.querySelectorAll(".pager-dots button")];
+  tabs.forEach(b => b.addEventListener("click", () => pages.scrollTo({ left: b.dataset.page * pages.clientWidth, behavior: reduceMotion ? "auto" : "smooth" })));
+  pages.addEventListener("scroll", () => {
+    const current = Math.round(pages.scrollLeft / pages.clientWidth);
+    tabs.forEach((b, i) => b.setAttribute("aria-selected", i === current));
+  });
+
+  renderTodos();
+  render();
+  document.fonts?.ready.then(() => drawRing(shown ?? target));
+  setInterval(() => { if (simulated === null) render(); }, 15000);
+</script>
