@@ -769,11 +769,16 @@
         along(0, L, c, detail, 1);
         for (let j = 0; j < 10; j++) {
           const u = k * 10 + j, done = L * .02 + r + j * step, todo = L - L * .02 - r - (9 - j) * step;
-          const move = style === "bounce" ? easeOutBounce(Math.min(1, progress * 1.6)) : 1 - (1 - progress) ** 3;
+          // Rebot: the bead drops in during the first 0.625 s of its unit, so minutes bounce exactly like seconds.
+          const move = style === "bounce" ? easeOutBounce(Math.min(1, progress * unitSeconds * 1.6)) : 1 - (1 - progress) ** 3;
           const a = u < filled ? done : u === filled ? todo + (done - todo) * move : todo;
           const [x, y] = P(a, c);
-          ctx.globalAlpha = u <= filled ? 1 : .45; ctx.fillStyle = u < filled ? ((u + 1) % 5 === 0 ? accent : fg) : u === filled ? accent : muted;
-          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+          if (u > filled) {
+            // Beads still waiting: solid fill plus a light rim so they stand out on the dark background.
+            ctx.fillStyle = `color-mix(in srgb, ${fg} 28%, ${bg})`; ctx.fill();
+            ctx.strokeStyle = `color-mix(in srgb, ${fg} 65%, ${bg})`; ctx.lineWidth = Math.max(1, r * .18); ctx.stroke();
+          } else { ctx.fillStyle = u < filled ? ((u + 1) % 5 === 0 ? accent : fg) : accent; ctx.fill(); }
         }
       }
     } else if (style === "typewriter") {
