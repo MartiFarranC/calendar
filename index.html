@@ -91,6 +91,28 @@
   .qdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--detail); }
   .qdots i.q { width: 10px; height: 10px; }
   .qdots i.on { background: var(--accent); }
+  /* View pickers: a segmented switch on the day page, and a panel with live previews on the clock page */
+  #page-dia { position: relative; }
+  .seg { position: absolute; top: 8px; right: 0; z-index: 1; display: flex; border: 1px solid var(--detail); border-radius: 999px; padding: 2px; background: var(--bg); }
+  .seg button { font: inherit; font-size: 11px; letter-spacing: 1px; color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 5px 11px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+  .pills #viewBtn { border-color: var(--fg); }
+  .picker { position: absolute; inset: 0; z-index: 2; background: var(--bg); display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; padding: 8px 2px 12px; box-sizing: border-box; }
+  .picker-head { display: flex; justify-content: space-between; align-items: center; position: sticky; top: -8px; background: var(--bg); padding: 4px 0; z-index: 1; }
+  .picker-head .pill { padding: 4px 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .tile { font: inherit; color: var(--fg); background: none; border: 1px solid var(--detail); border-radius: 12px; padding: 6px 6px 5px; cursor: pointer;
+    display: grid; gap: 4px; justify-items: center; font-size: 10px; letter-spacing: 1px; }
+  .tile canvas { width: 100%; height: 56px; display: block; }
+  .tiles.styles .tile canvas { height: 40px; }
+  .tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); font-weight: 700; }
+  .picker .seg { position: static; width: fit-content; }
+  .picker-head { flex-wrap: wrap; gap: 6px; }
+  @media (max-width: 520px) {
+    .seg { top: 0; } .seg button { font-size: 10px; padding: 4px 8px; }
+    .tiles { grid-template-columns: repeat(4, 1fr); gap: 6px; } .tile { font-size: 9px; letter-spacing: 0; padding: 4px 3px; border-radius: 10px; }
+    .tile canvas { height: 40px; } .tiles.styles .tile canvas { height: 32px; }
+  }
   .floatnote { color: var(--muted); font-size: 12px; text-align: center; padding: 16px; }
   .pills button { font: inherit; font-size: 11px; letter-spacing: 1px; color: var(--fg); background: var(--bg);
     border: 1px solid var(--detail); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
@@ -219,6 +241,9 @@
   <section class="day" aria-label="Avui">
     <div class="pages" id="pages">
       <div class="page" id="page-dia">
+        <div class="seg" id="daySeg" role="group" aria-label="Vista del dia">
+          <button type="button" data-v="ring" aria-pressed="true">ANELL</button><button type="button" data-v="24h" aria-pressed="false">24 H</button>
+        </div>
         <div class="ring">
           <canvas id="ring" aria-hidden="true"></canvas>
           <div class="ring-text">
@@ -231,9 +256,7 @@
       </div>
       <div class="page clockpage" id="page-rellotge">
         <div class="pills">
-          <button type="button" id="clockBtn" aria-label="Canvia de rellotge">BARRES ▸</button>
-          <button type="button" id="styleBtn" aria-label="Estil de les barres">REGLE</button>
-          <button type="button" id="dirBtn" aria-label="Direcció de les barres">↕</button>
+          <button type="button" id="viewBtn" aria-haspopup="true" aria-expanded="false" aria-label="Tria el rellotge i l'estil">BARRES · REGLE ▾</button>
           <button type="button" id="floatBtn" aria-label="Obre el rellotge en una finestra flotant">⧉ FLOTANT</button>
         </div>
         <div class="pieces" id="vClock">
@@ -246,6 +269,15 @@
           <div class="rows">
             <div class="hrow"><div class="meta"><div class="digits mDigits">00</div><div class="label">Min</div><div class="remaining minLeft"></div></div><canvas class="bar" data-bar="m"></canvas></div>
             <div class="hrow"><div class="meta"><div class="digits hDigits">00</div><div class="label">Hora</div><div class="remaining hourLeft"></div></div><canvas class="bar" data-bar="h"></canvas></div>
+          </div>
+        </div>
+        <div class="picker" id="picker" hidden>
+          <div class="picker-head"><span class="label strong">Rellotge</span><button type="button" class="pill" id="pickerClose" aria-label="Tanca">✕</button></div>
+          <div class="tiles" id="clockTiles"></div>
+          <div class="barOpts">
+            <div class="picker-head"><span class="label strong">Estil de les barres</span>
+              <div class="seg" id="dirSeg" role="group" aria-label="Direcció"><button type="button" data-v="v" aria-pressed="true">↕ VERTICAL</button><button type="button" data-v="h" aria-pressed="false">↔ HORITZONTAL</button></div></div>
+            <div class="tiles styles" id="styleTiles"></div>
           </div>
         </div>
         <div class="alt" hidden>
@@ -339,7 +371,7 @@
   // ---- Storage ---------------------------------------------------------------
   const load = (k, fallback) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; } };
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false, clock: "bars", dayView: "ring" };
+  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false, clock: "bars", dayView: "ring", barStyle: "ruler", vertical: true };
   let settings = { ...DEFAULTS, ...load("calendari.settings", {}) };
   const saveSettings = () => store("calendari.settings", settings);
 
@@ -581,7 +613,13 @@
   $("nextMonth").addEventListener("click", () => moveMonth(1));
   $("todayBtn").addEventListener("click", () => select(keyOf(new Date()), false));
   document.querySelector(".ring-text").addEventListener("click", e => { e.stopPropagation(); select(keyOf(new Date()), false); });
-  document.querySelector(".ring").addEventListener("click", () => { settings.dayView = settings.dayView === "24h" ? "ring" : "24h"; saveSettings(); drawRing(shown ?? target); });
+  function setDayView(v) {
+    settings.dayView = v; saveSettings(); $("setDayView").value = v;
+    $("daySeg").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === v));
+    drawRing(shown ?? target);
+  }
+  $("daySeg").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === settings.dayView));
+  $("daySeg").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setDayView(b.dataset.v); });
 
   // Swipe the month grid left or right to change month.
   let touchX = null;
@@ -627,7 +665,7 @@
   dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
   $("setStart").addEventListener("change", e => { if (e.target.value && toMin(e.target.value) < settings.end) { settings.start = toMin(e.target.value); saveSettings(); renderToday(); } else e.target.value = fromMin(settings.start); });
   $("setEnd").addEventListener("change", e => { if (e.target.value && toMin(e.target.value) > settings.start) { settings.end = toMin(e.target.value); saveSettings(); renderToday(); } else e.target.value = fromMin(settings.end); });
-  $("setDayView").addEventListener("change", e => { settings.dayView = e.target.value; saveSettings(); drawRing(shown ?? target); });
+  $("setDayView").addEventListener("change", e => setDayView(e.target.value));
   $("setTheme").addEventListener("change", e => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $("setSim").addEventListener("change", e => { settings.sim = e.target.checked; saveSettings(); applySim(); renderToday(); });
   $("exportBtn").addEventListener("click", () => {
@@ -666,7 +704,7 @@
   // Page 2: real time, read every frame like ClockSection does.
   // Bar styles, ported from ClockBar.kt: "along" runs bottom-to-top (vertical) or left-to-right, "across" is the thickness.
   const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"], ["matrix", "MATRIU"], ["abacus", "ÀBAC"], ["bounce", "REBOT"]];
-  let styleIndex = 0, vertical = true;
+  let styleIndex = Math.max(0, STYLES.findIndex(s => s[0] === settings.barStyle)), vertical = settings.vertical !== false;
   const easeOutBounce = x => { const n = 7.5625, d = 2.75;
     if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75; if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; };
   const tickLength = (u, s, f, q) => u % 15 === 0 ? q : u % 5 === 0 ? f : s;
@@ -774,15 +812,13 @@
     }
   }
 
-  const styleBtn = $("styleBtn"), dirBtn = $("dirBtn");
-  styleBtn.addEventListener("click", () => { styleIndex = (styleIndex + 1) % STYLES.length; styleBtn.textContent = STYLES[styleIndex][1]; });
-  dirBtn.addEventListener("click", () => { vertical = !vertical; dirBtn.textContent = vertical ? "↕" : "↔"; applyClock(); });
   // The clock page can move into an always-on-top Picture-in-Picture window, so look things up from it, not the document.
   const clock = $("page-rellotge"), all = sel => clock.querySelectorAll(sel);
   let clockWin = window, loop = 0;
   function tick(id) {
     if (id !== loop) return;
     const d = new Date(), ms = d.getMilliseconds() / 1000, kind = CLOCKS[clockIndex][0];
+    if (!clock.querySelector("#picker").hidden) drawThumbs(d);
     if (kind !== "bars") { drawAlt(kind, d); clockWin.requestAnimationFrame(() => tick(id)); return; }
     all(".secFill").forEach(e => e.style.setProperty("--f", ms));
     const root = clock.querySelector(vertical ? "#vClock" : "#hClock");
@@ -804,8 +840,11 @@
   const altBox = () => clock.querySelector(".alt");
   function applyClock() {
     const kind = CLOCKS[clockIndex][0], bars = kind === "bars";
-    $("clockBtn").textContent = `${CLOCKS[clockIndex][1]} ▸`;
-    styleBtn.hidden = dirBtn.hidden = !bars;
+    clock.querySelector("#viewBtn").textContent = `${CLOCKS[clockIndex][1]}${bars ? " · " + STYLES[styleIndex][1] : ""} ▾`;
+    clock.querySelectorAll("#clockTiles .tile").forEach((t, i) => t.setAttribute("aria-pressed", i === clockIndex));
+    clock.querySelectorAll("#styleTiles .tile").forEach((t, i) => t.setAttribute("aria-pressed", i === styleIndex));
+    clock.querySelectorAll("#dirSeg button").forEach(b => b.setAttribute("aria-pressed", (b.dataset.v === "v") === vertical));
+    clock.querySelector(".barOpts").hidden = !bars;
     clock.querySelector("#vClock").hidden = !bars || !vertical;
     clock.querySelector("#hClock").hidden = !bars || vertical;
     altBox().hidden = bars;
@@ -813,7 +852,48 @@
     altBox().querySelector("canvas").hidden = kind === "quarts";
     lastQ = "";
   }
-  $("clockBtn").addEventListener("click", () => { clockIndex = (clockIndex + 1) % CLOCKS.length; settings.clock = CLOCKS[clockIndex][0]; saveSettings(); applyClock(); });
+
+  // The picker: every clock and every bar style as a live thumbnail, one tap away.
+  const tile = (label, i, kind) => { const b = document.createElement("button"); b.type = "button"; b.className = "tile"; b.dataset.i = i;
+    b.innerHTML = `<canvas aria-hidden="true"></canvas><span>${label}</span>`; return b; };
+  CLOCKS.forEach(([k, label], i) => $("clockTiles").append(tile(label, i)));
+  STYLES.forEach(([k, label], i) => $("styleTiles").append(tile(label, i)));
+  function drawThumbs(d) {
+    const c = { fg: css("--fg"), bg: css("--bg"), accent: css("--accent"), detail: css("--detail"), muted: css("--muted") }, ms = d.getMilliseconds() / 1000;
+    clock.querySelectorAll("#clockTiles canvas").forEach((cv, i) => {
+      const kind = CLOCKS[i][0];
+      if (kind === "bars") { drawBar(cv, d.getSeconds(), ms, STYLES[styleIndex][0], false, 1); return; }
+      const p = prepCanvas(cv); if (!p) return;
+      if (kind === "quarts") {
+        const steps = Math.floor(d.getMinutes() / 5), gap = p.W / 13;
+        for (let n = 1; n <= 12; n++) dotAt(p.ctx, gap * n, p.H * .72, n % 3 ? 2.5 : 4, n <= steps ? c.accent : c.detail);
+        p.ctx.font = `800 ${p.H * .4}px 'Doto', 'Space Mono', monospace`; p.ctx.fillStyle = c.fg; p.ctx.textAlign = "center"; p.ctx.textBaseline = "middle";
+        p.ctx.fillText(`${Math.floor(d.getMinutes() / 15)}/4`, p.W / 2, p.H * .32);
+      } else FACES[kind](p, d, c);
+    });
+    if (CLOCKS[clockIndex][0] === "bars") clock.querySelectorAll("#styleTiles canvas").forEach((cv, i) => drawBar(cv, d.getSeconds(), ms, STYLES[i][0], false, 1));
+  }
+  const picker = () => clock.querySelector("#picker");
+  function openPicker(open) {
+    picker().hidden = !open; clock.querySelector("#viewBtn").setAttribute("aria-expanded", open);
+    if (open) picker().scrollTop = 0;
+  }
+  clock.querySelector("#viewBtn").addEventListener("click", () => openPicker(picker().hidden));
+  clock.querySelector("#pickerClose").addEventListener("click", () => openPicker(false));
+  clock.querySelector("#clockTiles").addEventListener("click", e => {
+    const t = e.target.closest(".tile"); if (!t) return;
+    clockIndex = +t.dataset.i; settings.clock = CLOCKS[clockIndex][0]; saveSettings(); applyClock();
+    if (CLOCKS[clockIndex][0] !== "bars") openPicker(false);
+  });
+  clock.querySelector("#styleTiles").addEventListener("click", e => {
+    const t = e.target.closest(".tile"); if (!t) return;
+    styleIndex = +t.dataset.i; settings.barStyle = STYLES[styleIndex][0]; saveSettings(); applyClock(); openPicker(false);
+  });
+  clock.querySelector("#dirSeg").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    vertical = b.dataset.v === "v"; settings.vertical = vertical; saveSettings(); applyClock();
+  });
+  clock.addEventListener("keydown", e => { if (e.key === "Escape" && !picker().hidden) { e.stopPropagation(); openPicker(false); clock.querySelector("#viewBtn").focus(); } });
 
   function prepCanvas(c) {
     const dpr = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
