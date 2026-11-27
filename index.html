@@ -665,7 +665,7 @@
 
   // Page 2: real time, read every frame like ClockSection does.
   // Bar styles, ported from ClockBar.kt: "along" runs bottom-to-top (vertical) or left-to-right, "across" is the thickness.
-  const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"]];
+  const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"], ["matrix", "MATRIU"], ["abacus", "ÀBAC"]];
   let styleIndex = 0, vertical = true;
   const tickLength = (u, s, f, q) => u % 15 === 0 ? q : u % 5 === 0 ? f : s;
   function drawBar(canvas, filled, progress, style, isVertical, unitSeconds = 1) {
@@ -712,6 +712,29 @@
       rect(bulb, start + scale * filled / 60, c0, c1, accent);
       for (let i = 0; i <= 60; i++) { const a = start + scale * i / 60, len = tickLength(i, T * .05, T * .09, T * .13); line(a, c0 - T * .04 - len, c0 - T * .04, muted); line(a, c1 + T * .04, c1 + T * .04 + len, muted); }
       for (let n = 15; n <= 60; n += 15) label(String(n), start + scale * n / 60, T * .88);
+    } else if (style === "matrix") {
+      // 60 squares in rows of five that fill one by one.
+      const cols = 5, rows = 12, cw = T / cols, rh = L / rows, s = Math.min(cw, rh) * .7;
+      for (let i = 0; i < 60; i++) {
+        const a = rh * (Math.floor(i / cols) + .5), c = cw * (i % cols + .5);
+        ctx.globalAlpha = i === filled ? .3 + .7 * progress : 1;
+        rect(a - s / 2, a + s / 2, c - s / 2, c + s / 2, i < filled ? fg : i === filled ? accent : detail, false);
+        ctx.globalAlpha = 1;
+      }
+    } else if (style === "abacus") {
+      // Six rods of ten beads; each unit slides one bead from the far end to the near end.
+      const rods = 6, r = Math.min(T / rods * .36, L / 24 * .45), step = r * 2.15;
+      for (let k = 0; k < rods; k++) {
+        const c = T * (k + .5) / rods;
+        along(0, L, c, detail, 1);
+        for (let j = 0; j < 10; j++) {
+          const u = k * 10 + j, done = L * .02 + r + j * step, todo = L - L * .02 - r - (9 - j) * step;
+          const a = u < filled ? done : u === filled ? todo + (done - todo) * (1 - (1 - progress) ** 3) : todo;
+          const [x, y] = P(a, c);
+          ctx.globalAlpha = u <= filled ? 1 : .45; ctx.fillStyle = u < filled ? ((u + 1) % 5 === 0 ? accent : fg) : u === filled ? accent : muted;
+          ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        }
+      }
     } else if (style === "typewriter") {
       // One mark typed per unit; when the line is full the carriage slides back during the first 0.6 s.
       const base = T * .5, slot = L / 60, mL = Math.min(slot * .55, T * .12), mH = T * .2;
