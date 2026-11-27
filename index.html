@@ -665,8 +665,10 @@
 
   // Page 2: real time, read every frame like ClockSection does.
   // Bar styles, ported from ClockBar.kt: "along" runs bottom-to-top (vertical) or left-to-right, "across" is the thickness.
-  const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"], ["matrix", "MATRIU"], ["abacus", "ÀBAC"]];
+  const STYLES = [["ruler", "REGLE"], ["needle", "AGULLA"], ["marks", "MARQUES"], ["thermometer", "TERMÒMETRE"], ["dial", "DIAL"], ["typewriter", "MÀQUINA"], ["matrix", "MATRIU"], ["abacus", "ÀBAC"], ["bounce", "REBOT"]];
   let styleIndex = 0, vertical = true;
+  const easeOutBounce = x => { const n = 7.5625, d = 2.75;
+    if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75; if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; };
   const tickLength = (u, s, f, q) => u % 15 === 0 ? q : u % 5 === 0 ? f : s;
   function drawBar(canvas, filled, progress, style, isVertical, unitSeconds = 1) {
     const dpr = devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
@@ -721,7 +723,7 @@
         rect(a - s / 2, a + s / 2, c - s / 2, c + s / 2, i < filled ? fg : i === filled ? accent : detail, false);
         ctx.globalAlpha = 1;
       }
-    } else if (style === "abacus") {
+    } else if (style === "abacus" || style === "bounce") {
       // Six rods of ten beads; each unit slides one bead from the far end to the near end.
       const rods = 6, r = Math.min(T / rods * .36, L / 24 * .45), step = r * 2.15;
       for (let k = 0; k < rods; k++) {
@@ -729,7 +731,8 @@
         along(0, L, c, detail, 1);
         for (let j = 0; j < 10; j++) {
           const u = k * 10 + j, done = L * .02 + r + j * step, todo = L - L * .02 - r - (9 - j) * step;
-          const a = u < filled ? done : u === filled ? todo + (done - todo) * (1 - (1 - progress) ** 3) : todo;
+          const move = style === "bounce" ? easeOutBounce(Math.min(1, progress * 1.6)) : 1 - (1 - progress) ** 3;
+          const a = u < filled ? done : u === filled ? todo + (done - todo) * move : todo;
           const [x, y] = P(a, c);
           ctx.globalAlpha = u <= filled ? 1 : .45; ctx.fillStyle = u < filled ? ((u + 1) % 5 === 0 ? accent : fg) : u === filled ? accent : muted;
           ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
