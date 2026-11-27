@@ -297,6 +297,9 @@
     <label class="row">Tema
       <select id="setTheme"><option value="auto">Automàtic</option><option value="light">Clar</option><option value="dark">Fosc</option></select>
     </label>
+    <label class="row">Dia
+      <select id="setDayView"><option value="ring">Anell de vetlla</option><option value="24h">Dia de 24 hores</option></select>
+    </label>
     <label class="row"><input type="checkbox" id="setSim"> Mostra el simulador d'hora</label>
   </section>
   <section>
@@ -336,7 +339,7 @@
   // ---- Storage ---------------------------------------------------------------
   const load = (k, fallback) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; } };
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false, clock: "bars" };
+  const DEFAULTS = { start: 7 * 60, end: 23 * 60, theme: "auto", sim: false, clock: "bars", dayView: "ring" };
   let settings = { ...DEFAULTS, ...load("calendari.settings", {}) };
   const saveSettings = () => store("calendari.settings", settings);
 
@@ -398,6 +401,7 @@
     if (!size) return;
     c.width = c.height = size * dpr;
     const ctx = c.getContext("2d"); ctx.scale(dpr, dpr);
+    if (settings.dayView === "24h") { drawDay24(ctx, size); return; }
     const dotR = size / 70, radius = size / 2 - dotR * 2, lit = value * RING_DOTS;
     const detail = css("--detail"), accent = css("--accent");
     for (let i = 0; i < RING_DOTS; i++) {
@@ -408,6 +412,29 @@
       if (amount > 0) { ctx.globalAlpha = amount; ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(x, y, dotR, 0, 2 * Math.PI); ctx.fill(); }
     }
   }
+  // The whole day on a 24-hour dial: sleep as a grey band, waking hours as dots, today's timed items in red, and a hand at the current time.
+  function drawDay24(ctx, size) {
+    const fg = css("--fg"), accent = css("--accent"), detail = css("--detail"), muted = css("--muted");
+    const cx = size / 2, cy = size / 2, R = size * .42, m = nowMinutes(), ang = min => -Math.PI / 2 + min / 1440 * Math.PI * 2;
+    const disc = (x, y, r, color, alpha = 1) => { ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; };
+    const inAwake = min => settings.start <= settings.end ? min >= settings.start && min < settings.end : min >= settings.start || min < settings.end;
+    for (let i = 0; i < 96; i++) {
+      const min = i * 15, a = ang(min), awake = inAwake(min), past = min < m;
+      disc(cx + R * Math.cos(a), cy + R * Math.sin(a), size * (i % 4 ? .006 : .0095), !awake ? detail : past ? muted : fg, !awake ? .9 : past ? .6 : 1);
+    }
+    ctx.lineCap = "round"; ctx.lineWidth = size * .035;
+    ctx.strokeStyle = detail; ctx.beginPath(); ctx.arc(cx, cy, R * .86, ang(settings.end), ang(settings.start + (settings.start < settings.end ? 1440 : 0))); ctx.stroke();
+    for (const t of itemsOn(keyOf(new Date())).filter(t => t.time)) {
+      const s = toMin(t.time), e = Math.min(1440, s + 60);
+      ctx.strokeStyle = t.done || e <= m ? muted : accent; ctx.beginPath(); ctx.arc(cx, cy, R * .86, ang(s) + .03, ang(e) - .03); ctx.stroke();
+    }
+    ctx.fillStyle = muted; ctx.font = `400 ${Math.max(9, size * .028)}px 'Space Mono', ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    [0, 6, 12, 18].forEach(h => { const a = ang(h * 60); ctx.fillText(String(h), cx + R * 1.12 * Math.cos(a), cy + R * 1.12 * Math.sin(a)); });
+    const a = ang(m);
+    ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx + R * .7 * Math.cos(a), cy + R * .7 * Math.sin(a)); ctx.lineTo(cx + R * 1.02 * Math.cos(a), cy + R * 1.02 * Math.sin(a)); ctx.stroke();
+    disc(cx + R * Math.cos(a), cy + R * Math.sin(a), size * .016, accent);
+  }
+
   function animate() {
     if (shown === null) { drawRing(target); return; }
     shown += (target - shown) * 0.08;
@@ -553,7 +580,8 @@
   $("prevMonth").addEventListener("click", () => moveMonth(-1));
   $("nextMonth").addEventListener("click", () => moveMonth(1));
   $("todayBtn").addEventListener("click", () => select(keyOf(new Date()), false));
-  document.querySelector(".ring-text").addEventListener("click", () => select(keyOf(new Date()), false));
+  document.querySelector(".ring-text").addEventListener("click", e => { e.stopPropagation(); select(keyOf(new Date()), false); });
+  document.querySelector(".ring").addEventListener("click", () => { settings.dayView = settings.dayView === "24h" ? "ring" : "24h"; saveSettings(); drawRing(shown ?? target); });
 
   // Swipe the month grid left or right to change month.
   let touchX = null;
@@ -593,12 +621,13 @@
   function applySim() { $("sim").hidden = !settings.sim; if (!settings.sim) simulated = null; }
   $("settings").addEventListener("click", () => {
     $("setStart").value = fromMin(settings.start); $("setEnd").value = fromMin(settings.end);
-    $("setTheme").value = settings.theme; $("setSim").checked = settings.sim;
+    $("setTheme").value = settings.theme; $("setSim").checked = settings.sim; $("setDayView").value = settings.dayView;
     dlg.showModal();
   });
   dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
   $("setStart").addEventListener("change", e => { if (e.target.value && toMin(e.target.value) < settings.end) { settings.start = toMin(e.target.value); saveSettings(); renderToday(); } else e.target.value = fromMin(settings.start); });
   $("setEnd").addEventListener("change", e => { if (e.target.value && toMin(e.target.value) > settings.start) { settings.end = toMin(e.target.value); saveSettings(); renderToday(); } else e.target.value = fromMin(settings.end); });
+  $("setDayView").addEventListener("change", e => { settings.dayView = e.target.value; saveSettings(); drawRing(shown ?? target); });
   $("setTheme").addEventListener("change", e => { settings.theme = e.target.value; saveSettings(); applyTheme(); });
   $("setSim").addEventListener("change", e => { settings.sim = e.target.checked; saveSettings(); applySim(); renderToday(); });
   $("exportBtn").addEventListener("click", () => {

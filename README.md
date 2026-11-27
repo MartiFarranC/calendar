@@ -5,7 +5,7 @@ https://martifarranc.github.io/calendar/
 
 ## Què fa
 
-- **Dia d'avui**: l'anell mostra quantes hores de vetlla et queden i quin és el pròxim esdeveniment.
+- **Dia d'avui**: l'anell mostra quantes hores de vetlla et queden i quin és el pròxim esdeveniment. Toca l'anell per canviar a la vista *Dia de 24 hores* (son, vetlla i esdeveniments en una esfera).
 - **Mes**: navega amb `‹ ›` (o lliscant el dit), tria qualsevol dia i torna a **AVUI**. Els dies amb coses tenen un punt; els festius de Catalunya (Setmana Santa inclosa) surten en vermell.
 - **Agenda del dia**: escriu una tasca, o comença amb una hora (`16:30 metge`, `9h gimnàs`) per fer-ne un esdeveniment. Es poden marcar, editar (✎) i esborrar (✕, amb *Desfés*). Les tasques pendents de dies anteriors apareixen a avui.
 - **Rellotges**: la segona pàgina (llisca o toca el segon punt). El botó de dalt canvia entre set rellotges: *Barres* (amb sis estils), *Quarts* (l'hora a la catalana), *Esfera* de punts, *Matriu* del dia, *Sol* (sortida i posta a Barcelona), *Sorra* i *Línia* del dia amb els teus esdeveniments. Tots es poden obrir en una finestra flotant.
